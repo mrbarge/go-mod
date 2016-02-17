@@ -5,13 +5,22 @@ import
 	"go-mod/module"
 	"log"
 	"github.com/alexcesaro/log/stdlog"
+	"flag"
+	"os"
 )
 
 
 func main() {
-
+	modfilepath := flag.String("load","","Path to file to load")
 	logger := stdlog.GetFromFlags()
-	m, err := module.Load("F:/workspace/go/src/go-mod/test/Origin.mod")
+	flag.Parse()
+	if (*modfilepath == "") {
+		logger.Error("Usage:")
+		logger.Error("   main.go -load <modfile>")
+		os.Exit(1)
+	}
+
+	m, err := module.Load(*modfilepath)
 	pt := m.(*module.ProTracker)
 	if (err == nil) {
 		logger.Infof("%s",pt.Title())
@@ -20,16 +29,4 @@ func main() {
 	} else {
 		log.Fatal(err)
 	}
-	/*
-	m, err = module.Load("F:/workspace/go/src/go-mod/test/Strange.mod")
-	fmt.Printf("%s\n",m.Title())
-	m, err = module.Load("F:/workspace/go/src/go-mod/test/TestModFive.mod")
-	fmt.Printf("%s\n",m.Title())
-	m, err = module.Load("F:/workspace/go/src/go-mod/test/PlanetSized.mod")
-	fmt.Printf("%s\n",m.Title())
-	m, err = module.Load("F:/workspace/go/src/go-mod/test/dreamzon.xm")
-	fmt.Printf("%s\n",m.Title())
-	m, err = module.Load("F:/workspace/go/src/go-mod/test/realization.s3m")
-	fmt.Printf("%s\n",m.Title())
-*/
 }

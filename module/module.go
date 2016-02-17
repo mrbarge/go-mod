@@ -170,18 +170,15 @@ func (m *ProTracker) Play() {
 }
 
 func (m *ScreamTracker) Load(data []byte) (error) {
-	m.title = "nothing yet ST"
-	return nil
+	return errors.New("Unsupported")
 }
 func (m *ScreamTracker) Play() {
-	fmt.Printf("Playing ST..\n")
 }
 func (m *ScreamTracker) Title() (string) {
 	return m.title
 }
 func (m *FastTracker) Load(data []byte) (error) {
-	m.title = "nothing yet FT"
-	return nil
+	return errors.New("Unsupported")
 }
 func (m *FastTracker) Play() {
 	fmt.Printf("Playing FT..\n")
@@ -189,11 +186,6 @@ func (m *FastTracker) Play() {
 func (m *FastTracker) Title() (string) {
 	return m.title
 }
-
-// Magic Numbers
-// S3M: hex position 25: 00 00 00 1A 10 00 00
-// XM: 0-17, "Extended Module:" 45 78 74 65 6E 64 65 64 20 6D 6F 64 75 6C 65 3A 20
-// Mod:
 
 func Load(modFile string) (Module,error) {
 
