@@ -56,6 +56,14 @@ type FastTracker struct {
 	Module
 }
 
+func (i *Instrument) Name() string {
+	return i.name
+}
+
+func (i *Instrument) Length() int64 {
+	return i.length
+}
+
 func (i *Instrument) Load(data []byte) (error) {
 	i.name = string(data[0:22])
 	// Length is stored as number of words in the PT format, but we'll store it as number of bytes
@@ -142,6 +150,10 @@ func (m *ProTracker) Load(data []byte) error {
 
 	stdlog.GetFromFlags().Debugf("I'm done at offset %d and length was %d",offset,length)
 	return nil
+}
+
+func (m *ProTracker) Instruments() [31]Instrument {
+	return m.instruments
 }
 
 func (m *ProTracker) SongLength() int8 {
