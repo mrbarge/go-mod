@@ -61,6 +61,16 @@ func main() {
 					for idx, instrument := range pt.Instruments() {
 						logger.Infof("Instrument %d: %s",idx,instrument.Name())
 					}
+					for idx, patternNum := range pt.SequenceTable() {
+						// If we've already moved past the song length in the sequence table, short circuit
+						if (idx >= int(pt.SongLength())) {
+							break
+						}
+						pattern, err := pt.GetPattern(patternNum)
+						if (err == nil) {
+							logger.Debugf("Sequence Number %d, Pattern: %d -> %d", idx, patternNum, pattern.NumChannels())
+						}
+					}
 				} else {
 					logger.Errorf("%s",err.Error())
 				}
