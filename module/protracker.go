@@ -63,7 +63,7 @@ func (m *ProTracker) Load(data []byte) error {
 	stdlog.GetFromFlags().Debugf("Starting to read %d patterns starting at offset %d",numPatterns,offset)
 	m.patterns = make([]Pattern, numPatterns, numPatterns)
 	for i := 0; i < numPatterns; i++ {
-		pattern := Pattern{channels:m.numChannels}
+		pattern := Pattern{rows:64,channels:m.numChannels}
 		// Sanity check for enough data remaining in the buffer
 		if (offset + 1024) > length {
 			errtxt := fmt.Sprintf("Exceeded remaining data length on pattern %d",i)
