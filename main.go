@@ -7,6 +7,7 @@ import
 	"github.com/alexcesaro/log/stdlog"
 	"os"
 	"github.com/codegangsta/cli"
+	"io/ioutil"
 )
 
 
@@ -74,6 +75,44 @@ func main() {
 				} else {
 					logger.Errorf("%s",err.Error())
 				}
+			},
+		},
+		{
+			Name: "extract",
+			Usage: "Extract an instrument sample.",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name: "file",
+					Usage: "File to extract from.",
+				},
+				cli.StringFlag{
+					Name: "out",
+					Usage: "File to write sample to.",
+				},
+				cli.StringFlag{
+					Name: "idx",
+					Usage: "Instrument index to extract (starts at 0)",
+				},
+			},
+			Action: func(c *cli.Context) {
+				m, err := module.Load(c.String("file"))
+				pt := m.(*module.ProTracker)
+				if (err != nil) {
+					logger.Errorf("%s",err.Error())
+					os.Exit(1)
+				}
+				i,err := pt.GetInstrument(c.Int("idx"))
+				if (err != nil) {
+					logger.Errorf("%s",err.Error())
+					os.Exit(1)
+				}
+				outdata := i.Data()
+				err = ioutil.WriteFile(c.String("out"),outdata,0644)
+				if (err != nil) {
+					logger.Errorf("%s",err.Error())
+					os.Exit(1)
+				}
+				logger.Infof("Wrote %d bytes to file %s",len(outdata),c.String("out"))
 			},
 		},
 	}
