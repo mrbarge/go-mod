@@ -2,7 +2,6 @@ package module
 
 import (
 	"testing"
-	"github.com/alexcesaro/log/stdlog"
 )
 
 //Info for each note:
@@ -34,16 +33,35 @@ var testNote3 = []byte{0x00,0x78,0x19,0x0f}
 // period: 0000-0111-1000
 var testNote4 = []byte{0x00,0x78,0x39,0x0f}
 
-func TestNoteLoad(*testing.T) {
+func TestNoteLoad(t *testing.T) {
 	n := Note{}
 	n.Load(testNote1)
-	stdlog.GetFromFlags().Infof("%d %d %d %d",n.period,n.instrument,n.effect,n.parameter)
-	n.Load(testNote2)
-	stdlog.GetFromFlags().Infof("%d %d %d %d",n.period,n.instrument,n.effect,n.parameter)
+
+	if (n.period != 120 || n.instrument != 1 || n.effect != 0 || n.parameter != 0) {
+		t.Errorf("Expected 120,1,0,0 got %d,%d,%d,%d",n.period,n.instrument,n.effect,n.parameter)
+	}
+	notestr,_ := n.ToString()
+	if (notestr != "A#3") {
+		t.Errorf("Expected %s, got %s","A#3")
+	}
+
 	n.Load(testNote3)
-	stdlog.GetFromFlags().Infof("%d %d %d %d",n.period,n.instrument,n.effect,n.parameter)
+	if (n.period != 120 || n.instrument != 1 || n.effect != 9 || n.parameter != 15) {
+		t.Errorf("Expected 120,1,9,15 got %d,%d,%d,%d",n.period,n.instrument,n.effect,n.parameter)
+	}
+	notestr,_ = n.ToString()
+	if (notestr != "A#3") {
+		t.Errorf("Expected %s, got %s","A#3")
+	}
+
 	n.Load(testNote4)
-	stdlog.GetFromFlags().Infof("%d %d %d %d",n.period,n.instrument,n.effect,n.parameter)
+	if (n.period != 120 || n.instrument != 3 || n.effect != 9 || n.parameter != 15) {
+		t.Errorf("Expected 120,3,9,15 got %d,%d,%d,%d",n.period,n.instrument,n.effect,n.parameter)
+	}
+	notestr,_ = n.ToString()
+	if (notestr != "A#3") {
+		t.Errorf("Expected %s, got %s","A#3")
+	}
 
 }
 

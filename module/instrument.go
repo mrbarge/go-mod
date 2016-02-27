@@ -31,3 +31,6 @@ func (i *Instrument) Load(data []byte) (error) {
 	return nil
 }
 
+func (i *Instrument) Data() []byte {
+	return i.data
+}

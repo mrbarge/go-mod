@@ -87,10 +87,20 @@ func (m *ProTracker) Load(data []byte) error {
 		}
 		offset += int(instrument.length)
 		copy(instrument.data, data[offset:offset+int(instrument.length)])
+		m.instruments[i] = instrument
 	}
 
 	stdlog.GetFromFlags().Debugf("I'm done at offset %d and length was %d",offset,length)
 	return nil
+}
+
+func (m *ProTracker) GetInstrument(i int) (Instrument,error) {
+	if (i < 0 || i > len(m.instruments)) {
+		return Instrument{},errors.New("Invalid instrument")
+	} else {
+		return m.instruments[i],nil
+	}
+
 }
 
 func (m *ProTracker) Instruments() [31]Instrument {
