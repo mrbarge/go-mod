@@ -63,31 +63,42 @@ func (m *ProTracker) Load(data []byte) error {
 	stdlog.GetFromFlags().Debugf("Starting to read %d patterns starting at offset %d",numPatterns,offset)
 	m.patterns = make([]Pattern, numPatterns, numPatterns)
 	for i := 0; i < numPatterns; i++ {
-		pattern := Pattern{rows:64,channels:m.numChannels}
+		pattern := Pattern{rows:make([]Row,64), numChannels:m.numChannels}
 		// Sanity check for enough data remaining in the buffer
+		for j := 0; j < pattern.NumRows(); j++ {
+			row := Row{notes:make([]Note, m.numChannels)}
+			for k := 0; k < pattern.NumChannels(); k++ {
+				n := Note{}
+				n.Load(data[offset:offset+4])
+				row.notes[k] = n
+				offset += 4
+			}
+			pattern.SetRow(j,row)
+		}
+/*
 		if (offset + 1024) > length {
 			errtxt := fmt.Sprintf("Exceeded remaining data length on pattern %d",i)
 			return errors.New(errtxt)
-		}
-		pattern.data = make([]byte, 1024)
-		copy(pattern.data, data[offset:offset+1024])
-		offset += 1024
+		}*/
+//		pattern.data = make([]byte, 1024)
+//		copy(pattern.data, data[offset:offset+1024])
+		//offset += 1024
 		m.patterns[i] = pattern
 	}
 
 	// Start reading the sample data
 	for i := 0; i < len(m.instruments); i++ {
 		instrument := m.instruments[i]
-		stdlog.GetFromFlags().Debugf("Loading sample %d of length %d (%s)",i,instrument.length,instrument.name)
+		stdlog.GetFromFlags().Debugf("Loading sample %d at offset %d of length %d (%s)",i,offset,instrument.length,instrument.name)
 		instrument.data = make([]byte, instrument.length)
 		// Sanity check for enough data remaining in the buffer
 		if (offset + int(instrument.length) > length) {
 			errtxt := fmt.Sprintf("Exceeded remaining data length on sample %d (%s)",i,instrument.name)
 			return errors.New(errtxt)
 		}
-		offset += int(instrument.length)
 		copy(instrument.data, data[offset:offset+int(instrument.length)])
 		m.instruments[i] = instrument
+		offset += int(instrument.length)
 	}
 
 	stdlog.GetFromFlags().Debugf("I'm done at offset %d and length was %d",offset,length)
