@@ -12,9 +12,13 @@ type ProTracker struct {
 	songLength int8
 	restartPos int8
 	sequenceTable [128]int8
-	instruments [31]Instrument
+	instruments []Instrument
 	patterns []Pattern
 	Module
+}
+
+func (m *ProTracker) Type() FileFormat {
+	return PROTRACKER
 }
 
 func (m *ProTracker) Load(data []byte) error {
@@ -30,7 +34,7 @@ func (m *ProTracker) Load(data []byte) error {
 		instrument := Instrument{}
 		instrument.Load(sampleMeta)
 		offset += 30
-		m.instruments[i] = instrument
+		m.instruments = append(m.instruments, instrument)
 	}
 
 	m.songLength = int8(data[offset])
@@ -111,10 +115,9 @@ func (m *ProTracker) GetInstrument(i int) (Instrument,error) {
 	} else {
 		return m.instruments[i],nil
 	}
-
 }
 
-func (m *ProTracker) Instruments() [31]Instrument {
+func (m *ProTracker) Instruments() []Instrument {
 	return m.instruments
 }
 

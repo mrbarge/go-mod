@@ -6,12 +6,21 @@ type ScreamTracker struct {
 	Module
 }
 
+func (m *ScreamTracker) Type() FileFormat {
+	return SCREAMTRACKER
+}
+
 func (m *ScreamTracker) Load(data []byte) (error) {
 	return errors.New("Unsupported")
 }
+
 func (m *ScreamTracker) Play() {
 }
+
 func (m *ScreamTracker) Title() (string) {
 	return m.title
 }
 
+func (m *ScreamTracker) Instruments() []Instrument {
+	return []Instrument{}
+}

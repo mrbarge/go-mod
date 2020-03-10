@@ -5,8 +5,9 @@ import (
 	"os"
 )
 
+type FileFormat int
 const (
-	MOD = iota
+	PROTRACKER = iota
 	SCREAMTRACKER
 	FASTTRACKER
 )
@@ -15,6 +16,8 @@ type Module interface {
 	Load(data []byte) (error)
 	Title() (string)
 	Play()
+	Type() FileFormat
+	Instruments() []Instrument
 }
 
 func Load(modFile string) (Module,error) {

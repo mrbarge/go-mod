@@ -1,11 +1,15 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go-mod/module"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"regexp"
 )
 
 func info(file string) error {
@@ -49,34 +53,57 @@ func info(file string) error {
 	return nil
 }
 
-func export(infile string, index int, outfile string) error {
+func dumpAll(infile string, dir string) error {
+
+	if !checkExists(infile) {
+		return errors.New("Input file does not exist")
+	} else if !checkExists(dir) {
+		return errors.New("Output dir does not exist")
+	}
+
 	log.WithFields(log.Fields{
 		"infile": infile,
-		"outfile": outfile,
-		"index": index,
-	}).Info("Exporting sample")
+		"dir": dir,
+	}).Info("Exporting all samples")
 
 	m, err := module.Load(infile)
-	pt := m.(*module.ProTracker)
-	if (err != nil) {
-		return err
-	}
-	i,err := pt.GetInstrument(index)
-	if (err != nil) {
-		return err
-	}
-	outdata := i.Data()
-	err = ioutil.WriteFile(outfile, outdata,0644)
-	if (err != nil) {
-		return err
-	}
+	instruments := m.Instruments()
 
-	log.WithFields(log.Fields{
-		"num-bytes": len(outdata),
-		"out-file": outfile,
-	}).Info("Wrote")
+	destdir := filepath.Join(dir, filepath.Base(infile))
+	os.MkdirAll(destdir, 0755)
+
+	for idx, instrument := range instruments {
+		outdata := instrument.Data()
+		if len(outdata) == 0 {
+			log.Debug("Ignoring instrument index ",idx)
+			continue
+		}
+		destname := fmt.Sprintf("%d-%s",idx,stripRegex(instrument.Name()))
+		outpath := filepath.Join(destdir,destname)
+		err = ioutil.WriteFile(outpath, outdata, 0644)
+		if err != nil {
+			return err
+		}
+		log.WithFields(log.Fields{
+			"num-bytes": len(outdata),
+			"out-file": outpath,
+		}).Info("Wrote")
+	}
 
 	return nil
+}
+
+func checkExists(path string) bool {
+	_, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func stripRegex(in string) string {
+	reg, _ := regexp.Compile("[^a-zA-Z0-9]+")
+	return reg.ReplaceAllString(in, "")
 }
 
 func main() {
@@ -97,18 +124,16 @@ func main() {
 				},
 			},
 			&cli.Command{
-				Name: "extract",
-				Usage: "Extract an instrument sample.",
+				Name: "dump-samples",
+				Usage: "Dump all instrument samples.",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "file", Usage: "File to extract from." },
-					&cli.StringFlag{Name: "out", Usage: "File to write sample to." },
-					&cli.StringFlag{Name: "idx", Usage: "Instrument index to extract (starts at 0)" },
+					&cli.StringFlag{Name: "dir", Usage: "Directory to write to." },
 				},
 				Action: func(c *cli.Context) error {
 					f := c.String("file")
-					idx := c.Int("idx")
-					o := c.String("out")
-					return export(f, idx, o)
+					d := c.String("dir")
+					return dumpAll(f, d)
 				},
 			},
 		},
