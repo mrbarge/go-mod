@@ -2,7 +2,6 @@ package module
 
 import (
 	"encoding/binary"
-	"errors"
 )
 
 //	0	char[28]	title	Song title, must be null-terminated
@@ -31,19 +30,53 @@ import (
 
 type ScreamTracker struct {
 	title string
+	masterVolume uint8
+	isStereo bool
+	speed uint8
+	tempo uint8
+	volume uint8
+	signature string
+	sampleType SampleType
+	instruments []Instrument
+	patterns []Pattern
 	Module
 }
+
+type SampleType int
+const (
+	SIGNED = iota + 1
+	UNSIGNED
+)
 
 func (m *ScreamTracker) Type() FileFormat {
 	return SCREAMTRACKER
 }
 
 func (m *ScreamTracker) Load(data []byte) (error) {
-	m.title = string(data[0:28])
+	m.title = filterNulls(string(data[0:28]))
 
-	//numOrders := binary.LittleEndian.Uint32(data[32:33])
-	//numInstruments :=binary.LittleEndian.Uint32(data[34:36])
+	//orderCount := binary.LittleEndian.Uint32(data[32:33])
+	instrumentCount := binary.LittleEndian.Uint16(data[34:36])
+	patternPtrCount := binary.LittleEndian.Uint16(data[36:38])
+	//flags := binary.LittleEndian.Uint32(data[38:40])
+	m.sampleType = SampleType(binary.LittleEndian.Uint16(data[42:44]))
+	m.signature = string(data[44:48])
+	m.volume = uint8(data[48])
+	m.speed = uint8(data[49])
+	m.tempo = uint8(data[50])
+	m.isStereo = ((data[51] & (1 << 7)) != 0)
+	m.masterVolume = uint8((data[51] << 1) >> 1)
 
+	for i := 0; i < int(instrumentCount); i++ {
+		instrument := Instrument{}
+		m.instruments = append(m.instruments, instrument)
+	}
+	for i := 0; i < int(patternPtrCount); i++ {
+		pattern := Pattern{}
+		m.patterns = append(m.patterns, pattern)
+	}
+
+	return nil
 }
 
 func (m *ScreamTracker) Play() {
@@ -56,3 +89,8 @@ func (m *ScreamTracker) Title() (string) {
 func (m *ScreamTracker) Instruments() []Instrument {
 	return []Instrument{}
 }
+
+func (m *ScreamTracker) NumPatterns() int {
+	return len(m.patterns)
+}
+

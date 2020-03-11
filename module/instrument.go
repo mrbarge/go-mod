@@ -20,7 +20,7 @@ func (i *Instrument) Length() int64 {
 }
 
 func (i *Instrument) Load(data []byte) (error) {
-	i.name = string(data[0:22])
+	i.name = filterNulls(string(data[0:22]))
 	// Length is stored as number of words in the PT format, but we'll store it as number of bytes
 	i.length = int64(binary.BigEndian.Uint16(data[22:24])) * 2
 	i.finetune = int8(data[24])

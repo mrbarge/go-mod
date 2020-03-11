@@ -18,31 +18,33 @@ func info(file string) error {
 	}).Info("Printing Info")
 
 	m, err := module.Load(file)
-	pt := m.(*module.ProTracker)
 	if (err == nil) {
 		log.WithFields(log.Fields{
-			"title": pt.Title(),
-			"song-length": pt.SongLength(),
-			"num-patterns": pt.NumPatterns(),
+			"title": m.Title(),
+			"num-patterns": m.NumPatterns(),
 		}).Info("Info")
-		for idx, instrument := range pt.Instruments() {
+		for idx, instrument := range m.Instruments() {
 			log.WithFields(log.Fields{
 				"index": idx,
 				"name": instrument.Name(),
 			}).Info("Instrument")
 		}
-		for idx, patternNum := range pt.SequenceTable() {
-			// If we've already moved past the song length in the sequence table, short circuit
-			if (idx >= int(pt.SongLength())) {
-				break
-			}
-			pattern, err := pt.GetPattern(patternNum)
-			if (err == nil) {
-				log.WithFields(log.Fields{
-					"seq-no": idx,
-					"pattern": patternNum,
-					"channel": pattern.NumChannels(),
-				}).Info()
+
+		if (m.Type() == module.PROTRACKER) {
+			pt := m.(*module.ProTracker)
+			for idx, patternNum := range pt.SequenceTable() {
+				// If we've already moved past the song length in the sequence table, short circuit
+				if (idx >= int(pt.SongLength())) {
+					break
+				}
+				pattern, err := pt.GetPattern(patternNum)
+				if (err == nil) {
+					log.WithFields(log.Fields{
+						"seq-no": idx,
+						"pattern": patternNum,
+						"channel": pattern.NumChannels(),
+					}).Info()
+				}
 			}
 		}
 

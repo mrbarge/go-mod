@@ -18,6 +18,8 @@ type Module interface {
 	Play()
 	Type() FileFormat
 	Instruments() []Instrument
+	NumPatterns() int
+
 }
 
 func Load(modFile string) (Module,error) {
