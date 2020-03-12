@@ -2,6 +2,8 @@ package module
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 )
 
 //	0	char[28]	title	Song title, must be null-terminated
@@ -24,9 +26,9 @@ import (
 //	54	BYTE[8]	reserved	Unused, some trackers store data here
 //	62	UINT16LE	ptrSpecial	Parapointer to additional data, if flags has bit 7 set
 //	64	UINT8[32]	channelSettings	See below
-//	98	UINT8[orderCount]	orderList	Which order patterns are played in
-//	99	UINT16LE[instrumentCount]	ptrInstruments	List of parapointers to each instrument's data
-//	101	UINT16LE[patternPtrCount]	ptrPatterns	List of parapointers to each pattern's data
+//	96	UINT8[orderCount]	orderList	Which order patterns are played in
+//	98	UINT16LE[instrumentCount]	ptrInstruments	List of parapointers to each instrument's data
+//	100	UINT16LE[patternPtrCount]	ptrPatterns	List of parapointers to each pattern's data
 
 type ScreamTracker struct {
 	title string
@@ -37,8 +39,9 @@ type ScreamTracker struct {
 	volume uint8
 	signature string
 	sampleType SampleType
-	instruments []Instrument
+	instruments []STInstrument
 	patterns []Pattern
+	orderList []uint8
 	Module
 }
 
@@ -55,7 +58,7 @@ func (m *ScreamTracker) Type() FileFormat {
 func (m *ScreamTracker) Load(data []byte) (error) {
 	m.title = filterNulls(string(data[0:28]))
 
-	//orderCount := binary.LittleEndian.Uint32(data[32:33])
+	orderCount := binary.LittleEndian.Uint16(data[32:34])
 	instrumentCount := binary.LittleEndian.Uint16(data[34:36])
 	patternPtrCount := binary.LittleEndian.Uint16(data[36:38])
 	//flags := binary.LittleEndian.Uint32(data[38:40])
@@ -67,8 +70,28 @@ func (m *ScreamTracker) Load(data []byte) (error) {
 	m.isStereo = ((data[51] & (1 << 7)) != 0)
 	m.masterVolume = uint8((data[51] << 1) >> 1)
 
+	// order list loading time
+	for i := 96; i < 96+int(orderCount); i++ {
+		patternNum := uint8(data[i])
+		m.orderList = append(m.orderList, patternNum)
+	}
+
+	fmt.Println(m.orderList)
+	// instrument loading time
+	startOffset := 96+int(orderCount)
 	for i := 0; i < int(instrumentCount); i++ {
-		instrument := Instrument{}
+		// offset is parapointer, so multiply by 16
+		instrumentOffset := int(binary.LittleEndian.Uint16(data[startOffset+(i*2):startOffset+2+(i*2)]) * 16)
+		instrumentType := uint8(data[instrumentOffset])
+		if instrumentType == 0 {
+			// empty instrument
+			continue
+		} else if instrumentType != 1 {
+			return errors.New(fmt.Sprintf("Invalid instrument type %d at offset %d", instrumentType, instrumentOffset))
+		}
+
+		instrumentFilename := filterNulls(string(data[instrumentOffset+1:instrumentOffset+13]))
+		instrument := STInstrument{name:instrumentFilename, filename: instrumentFilename}
 		m.instruments = append(m.instruments, instrument)
 	}
 	for i := 0; i < int(patternPtrCount); i++ {
@@ -87,7 +110,11 @@ func (m *ScreamTracker) Title() (string) {
 }
 
 func (m *ScreamTracker) Instruments() []Instrument {
-	return []Instrument{}
+	r := make([]Instrument, len(m.instruments))
+	for i := range m.instruments {
+		r[i] = m.instruments[i]
+	}
+	return r
 }
 
 func (m *ScreamTracker) NumPatterns() int {

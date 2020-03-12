@@ -27,7 +27,7 @@ func info(file string) error {
 			log.WithFields(log.Fields{
 				"index": idx,
 				"name": instrument.Name(),
-			}).Info("Instrument")
+			}).Info("PTInstrument")
 		}
 
 		if (m.Type() == module.PROTRACKER) {

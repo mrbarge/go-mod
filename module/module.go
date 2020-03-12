@@ -13,13 +13,18 @@ const (
 )
 
 type Module interface {
-	Load(data []byte) (error)
-	Title() (string)
+	Load(data []byte) error
+	Title() string
 	Play()
 	Type() FileFormat
 	Instruments() []Instrument
 	NumPatterns() int
+}
 
+type Instrument interface {
+	Name() string
+	Filename() string
+	Data() []byte
 }
 
 func Load(modFile string) (Module,error) {

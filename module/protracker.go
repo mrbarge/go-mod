@@ -12,7 +12,7 @@ type ProTracker struct {
 	songLength int8
 	restartPos int8
 	sequenceTable [128]int8
-	instruments []Instrument
+	instruments []PTInstrument
 	patterns []Pattern
 	Module
 }
@@ -31,7 +31,7 @@ func (m *ProTracker) Load(data []byte) error {
 	// Todo: If there's no magic number we should assume only 15 samples, not 31
 	for i := 0; i < 31; i++ {
 		sampleMeta := data[offset:offset+30]
-		instrument := Instrument{}
+		instrument := PTInstrument{}
 		instrument.Load(sampleMeta)
 		offset += 30
 		m.instruments = append(m.instruments, instrument)
@@ -109,16 +109,20 @@ func (m *ProTracker) Load(data []byte) error {
 	return nil
 }
 
-func (m *ProTracker) GetInstrument(i int) (Instrument,error) {
+func (m *ProTracker) GetInstrument(i int) (PTInstrument,error) {
 	if (i < 0 || i > len(m.instruments)) {
-		return Instrument{},errors.New("Invalid instrument")
+		return PTInstrument{},errors.New("Invalid instrument")
 	} else {
 		return m.instruments[i],nil
 	}
 }
 
 func (m *ProTracker) Instruments() []Instrument {
-	return m.instruments
+	r := make([]Instrument, len(m.instruments))
+	for i := range m.instruments {
+		r[i] = m.instruments[i]
+	}
+	return r
 }
 
 func (m *ProTracker) SongLength() int8 {
