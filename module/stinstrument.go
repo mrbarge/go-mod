@@ -3,6 +3,14 @@ package module
 type STInstrument struct {
 	name string
 	filename string
+	length uint32
+	loopStart uint32
+	loopEnd uint32
+	sampleOffset int
+	volume uint8
+	pack uint8
+	flags uint8
+	c2spd uint32
 	data []byte
 	Instrument
 }

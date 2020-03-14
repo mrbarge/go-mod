@@ -27,7 +27,8 @@ func info(file string) error {
 			log.WithFields(log.Fields{
 				"index": idx,
 				"name": instrument.Name(),
-			}).Info("PTInstrument")
+				"filename": instrument.Filename(),
+			}).Info("Instrument")
 		}
 
 		if (m.Type() == module.PROTRACKER) {
@@ -80,7 +81,7 @@ func dumpAll(infile string, dir string) error {
 			log.Debug("Ignoring instrument index ",idx)
 			continue
 		}
-		destname := fmt.Sprintf("%d-%s",idx,stripRegex(instrument.Name()))
+		destname := fmt.Sprintf("%d-%s",idx,stripRegex(instrument.Filename()))
 		outpath := filepath.Join(destdir,destname)
 		err = ioutil.WriteFile(outpath, outdata, 0644)
 		if err != nil {

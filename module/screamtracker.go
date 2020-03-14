@@ -76,7 +76,6 @@ func (m *ScreamTracker) Load(data []byte) (error) {
 		m.orderList = append(m.orderList, patternNum)
 	}
 
-	fmt.Println(m.orderList)
 	// instrument loading time
 	startOffset := 96+int(orderCount)
 	for i := 0; i < int(instrumentCount); i++ {
@@ -87,11 +86,53 @@ func (m *ScreamTracker) Load(data []byte) (error) {
 			// empty instrument
 			continue
 		} else if instrumentType != 1 {
-			return errors.New(fmt.Sprintf("Invalid instrument type %d at offset %d", instrumentType, instrumentOffset))
+			return errors.New(fmt.Sprintf("Unsupported instrument type %d at offset %d", instrumentType, instrumentOffset))
+		}
+		instrumentOffset = instrumentOffset + 1
+
+		instrument := STInstrument{}
+
+		instrument.filename = filterNulls(string(data[instrumentOffset:instrumentOffset+12]))
+		instrumentOffset = instrumentOffset + 12
+
+		sampleHighOffset := data[instrumentOffset]
+		instrumentOffset = instrumentOffset + 1
+		// another parapointer, so *16
+		instrument.sampleOffset = int(uint(sampleHighOffset << 16) | uint(data[instrumentOffset+1]) << 8 | uint(data[instrumentOffset]))*16
+		instrumentOffset = instrumentOffset + 2
+
+		//instrumentOffset := sampleHighOffset
+		instrument.length = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset = instrumentOffset + 4
+
+		instrument.loopStart = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset = instrumentOffset + 4
+
+		instrument.loopEnd = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset = instrumentOffset + 4
+
+		instrument.volume = data[instrumentOffset]
+		instrumentOffset = instrumentOffset + 2 // Skip reserved
+
+		instrument.pack = data[instrumentOffset]
+		instrumentOffset = instrumentOffset + 1
+
+		instrumentOffset = instrumentOffset + 1 //flags
+
+		instrument.c2spd = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset = instrumentOffset + 16  // skip internal
+
+		instrument.name = filterNulls(string(data[instrumentOffset:instrumentOffset+28]))
+		instrumentOffset = instrumentOffset + 28
+
+		// validate we ended up at the right spot
+		if string(data[instrumentOffset:instrumentOffset+4]) != "SCRS" {
+			return errors.New(fmt.Sprintf("Signature missing or corrupt for instrument %d", i))
 		}
 
-		instrumentFilename := filterNulls(string(data[instrumentOffset+1:instrumentOffset+13]))
-		instrument := STInstrument{name:instrumentFilename, filename: instrumentFilename}
+		// lastly set the sample data
+		instrument.data = data[instrument.sampleOffset:instrument.sampleOffset+int(instrument.length)]
+
 		m.instruments = append(m.instruments, instrument)
 	}
 	for i := 0; i < int(patternPtrCount); i++ {
