@@ -1,6 +1,7 @@
 package module
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/alexcesaro/log/stdlog"
 	"errors"
@@ -12,7 +13,8 @@ type ProTracker struct {
 	songLength int8
 	restartPos int8
 	sequenceTable [128]int8
-	instruments []PTInstrument
+	instruments []Instrument
+	samples []PTSample
 	patterns []Pattern
 	Module
 }
@@ -29,12 +31,13 @@ func (m *ProTracker) Load(data []byte) error {
 	// Load sample metadata
 	offset := int(20)
 	// Todo: If there's no magic number we should assume only 15 samples, not 31
+
+	sampleDatas := make([][]byte, 0)
+
 	for i := 0; i < 31; i++ {
 		sampleMeta := data[offset:offset+30]
-		instrument := PTInstrument{}
-		instrument.Load(sampleMeta)
+		sampleDatas = append(sampleDatas, sampleMeta)
 		offset += 30
-		m.instruments = append(m.instruments, instrument)
 	}
 
 	m.songLength = int8(data[offset])
@@ -79,48 +82,62 @@ func (m *ProTracker) Load(data []byte) error {
 			}
 			pattern.SetRow(j,row)
 		}
-/*
-		if (offset + 1024) > length {
-			errtxt := fmt.Sprintf("Exceeded remaining data length on pattern %d",i)
-			return errors.New(errtxt)
-		}*/
-//		pattern.data = make([]byte, 1024)
-//		copy(pattern.data, data[offset:offset+1024])
+		/*
+			if (offset + 1024) > length {
+				errtxt := fmt.Sprintf("Exceeded remaining data length on pattern %d",i)
+				return errors.New(errtxt)
+			}*/
+		//		pattern.data = make([]byte, 1024)
+		//		copy(pattern.data, data[offset:offset+1024])
 		//offset += 1024
 		m.patterns[i] = pattern
 	}
 
 	// Start reading the sample data
-	for i := 0; i < len(m.instruments); i++ {
-		instrument := m.instruments[i]
-		stdlog.GetFromFlags().Debugf("Loading sample %d at offset %d of length %d (%s)",i,offset,instrument.length,instrument.name)
-		instrument.data = make([]byte, instrument.length)
+	for i, sampleData := range sampleDatas {
+		sample := PTSample{}
+		sample.name = filterNulls(string(sampleData[0:22]))
+		// Length is stored as number of words in the PT format, but we'll store it as number of bytes
+		sample.length = int64(binary.BigEndian.Uint16(sampleData[22:24])) * 2
+		sample.finetune = int8(sampleData[24])
+		sample.volume = int8(sampleData[25])
+		sample.repeatOffset = binary.BigEndian.Uint16(sampleData[25:27])
+		sample.repeatLength = binary.BigEndian.Uint16(sampleData[27:29])
+		sample.data = data[offset:offset+int(sample.length)]
 		// Sanity check for enough data remaining in the buffer
-		if (offset + int(instrument.length) > length) {
-			errtxt := fmt.Sprintf("Exceeded remaining data length on sample %d (%s)",i,instrument.name)
+		if (offset + int(sample.length) > length) {
+			errtxt := fmt.Sprintf("Exceeded remaining data length on sample %d (%s)",i, sample.name)
 			return errors.New(errtxt)
 		}
-		copy(instrument.data, data[offset:offset+int(instrument.length)])
-		m.instruments[i] = instrument
-		offset += int(instrument.length)
+		m.samples = append(m.samples, sample)
+		offset += int(sample.length)
 	}
 
+	//for i := 0; i < len(m.samples); i++ {
+	//	sample := m.samples[i]
+	//	stdlog.GetFromFlags().Debugf("Loading sample %d at offset %d of length %d (%s)",i,offset, sample.length, sample.name)
+	//}
+	//
 	stdlog.GetFromFlags().Debugf("I'm done at offset %d and length was %d",offset,length)
 	return nil
 }
 
-func (m *ProTracker) GetInstrument(i int) (PTInstrument,error) {
-	if (i < 0 || i > len(m.instruments)) {
-		return PTInstrument{},errors.New("Invalid instrument")
+func (m *ProTracker) GetSample(i int) (PTSample,error) {
+	if (i < 0 || i > len(m.samples)) {
+		return PTSample{},errors.New("Invalid sample")
 	} else {
-		return m.instruments[i],nil
+		return m.samples[i],nil
 	}
 }
 
 func (m *ProTracker) Instruments() []Instrument {
-	r := make([]Instrument, len(m.instruments))
-	for i := range m.instruments {
-		r[i] = m.instruments[i]
+	return []Instrument{}
+}
+
+func (m *ProTracker) Samples() []Sample {
+	r := make([]Sample, len(m.samples))
+	for i := range m.samples {
+		r[i] = m.samples[i]
 	}
 	return r
 }

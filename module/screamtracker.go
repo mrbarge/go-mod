@@ -39,7 +39,7 @@ type ScreamTracker struct {
 	volume uint8
 	signature string
 	sampleType SampleType
-	instruments []STInstrument
+	samples []STSample
 	patterns []Pattern
 	orderList []uint8
 	Module
@@ -83,57 +83,58 @@ func (m *ScreamTracker) Load(data []byte) (error) {
 		instrumentOffset := int(binary.LittleEndian.Uint16(data[startOffset+(i*2):startOffset+2+(i*2)]) * 16)
 		instrumentType := uint8(data[instrumentOffset])
 		if instrumentType == 0 {
-			// empty instrument
+			// empty sample
 			continue
 		} else if instrumentType != 1 {
-			return errors.New(fmt.Sprintf("Unsupported instrument type %d at offset %d", instrumentType, instrumentOffset))
+			return errors.New(fmt.Sprintf("Unsupported sample type %d at offset %d", instrumentType, instrumentOffset))
 		}
 		instrumentOffset = instrumentOffset + 1
 
-		instrument := STInstrument{}
+		sample := STSample{}
 
-		instrument.filename = filterNulls(string(data[instrumentOffset:instrumentOffset+12]))
+		sample.filename = filterNulls(string(data[instrumentOffset:instrumentOffset+12]))
 		instrumentOffset = instrumentOffset + 12
 
 		sampleHighOffset := data[instrumentOffset]
-		instrumentOffset = instrumentOffset + 1
+		instrumentOffset += 1
 		// another parapointer, so *16
-		instrument.sampleOffset = int(uint(sampleHighOffset << 16) | uint(data[instrumentOffset+1]) << 8 | uint(data[instrumentOffset]))*16
-		instrumentOffset = instrumentOffset + 2
+		sample.sampleOffset = int(uint(sampleHighOffset << 16) | uint(data[instrumentOffset+1]) << 8 | uint(data[instrumentOffset]))*16
+		instrumentOffset += 2
 
 		//instrumentOffset := sampleHighOffset
-		instrument.length = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
-		instrumentOffset = instrumentOffset + 4
+		sample.length = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset += 4
+		//instrumentOffset = instrumentOffset + 4
 
-		instrument.loopStart = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
-		instrumentOffset = instrumentOffset + 4
+		sample.loopStart = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset += 4
 
-		instrument.loopEnd = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
-		instrumentOffset = instrumentOffset + 4
+		sample.loopEnd = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset += 4
 
-		instrument.volume = data[instrumentOffset]
-		instrumentOffset = instrumentOffset + 2 // Skip reserved
+		sample.volume = data[instrumentOffset]
+		instrumentOffset += 2
 
-		instrument.pack = data[instrumentOffset]
-		instrumentOffset = instrumentOffset + 1
+		sample.pack = data[instrumentOffset]
+		instrumentOffset += 1
 
-		instrumentOffset = instrumentOffset + 1 //flags
+		instrumentOffset += 1	//flags
 
-		instrument.c2spd = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
-		instrumentOffset = instrumentOffset + 16  // skip internal
+		sample.c2spd = binary.LittleEndian.Uint32(data[instrumentOffset:instrumentOffset+4])
+		instrumentOffset += 16 	// skip internal
 
-		instrument.name = filterNulls(string(data[instrumentOffset:instrumentOffset+28]))
-		instrumentOffset = instrumentOffset + 28
+		sample.name = filterNulls(string(data[instrumentOffset:instrumentOffset+28]))
+		instrumentOffset += 28
 
 		// validate we ended up at the right spot
 		if string(data[instrumentOffset:instrumentOffset+4]) != "SCRS" {
-			return errors.New(fmt.Sprintf("Signature missing or corrupt for instrument %d", i))
+			return errors.New(fmt.Sprintf("Signature missing or corrupt for sample %d", i))
 		}
 
 		// lastly set the sample data
-		instrument.data = data[instrument.sampleOffset:instrument.sampleOffset+int(instrument.length)]
+		sample.data = data[sample.sampleOffset: sample.sampleOffset+int(sample.length)]
 
-		m.instruments = append(m.instruments, instrument)
+		m.samples = append(m.samples, sample)
 	}
 	for i := 0; i < int(patternPtrCount); i++ {
 		pattern := Pattern{}
@@ -151,9 +152,13 @@ func (m *ScreamTracker) Title() (string) {
 }
 
 func (m *ScreamTracker) Instruments() []Instrument {
-	r := make([]Instrument, len(m.instruments))
-	for i := range m.instruments {
-		r[i] = m.instruments[i]
+	return []Instrument{}
+}
+
+func (m *ScreamTracker) Samples() []Sample {
+	r := make([]Sample, len(m.samples))
+	for i := range m.samples {
+		r[i] = m.samples[i]
 	}
 	return r
 }

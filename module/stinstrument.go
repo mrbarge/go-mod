@@ -1,6 +1,6 @@
 package module
 
-type STInstrument struct {
+type STSample struct {
 	name string
 	filename string
 	length uint32
@@ -12,21 +12,21 @@ type STInstrument struct {
 	flags uint8
 	c2spd uint32
 	data []byte
-	Instrument
+	Sample
 }
 
-func (i STInstrument) Name() string {
+func (i STSample) Name() string {
 	return i.name
 }
 
-func (i STInstrument) Filename() string {
+func (i STSample) Filename() string {
 	return i.filename
 }
 
-func (i STInstrument) Load(data []byte) (error) {
+func (i STSample) Load(data []byte) (error) {
 	return nil
 }
 
-func (i STInstrument) Data() []byte {
+func (i STSample) Data() []byte {
 	return i.data
 }

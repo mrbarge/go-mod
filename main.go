@@ -23,12 +23,12 @@ func info(file string) error {
 			"title": m.Title(),
 			"num-patterns": m.NumPatterns(),
 		}).Info("Info")
-		for idx, instrument := range m.Instruments() {
+		for idx, sample := range m.Samples() {
 			log.WithFields(log.Fields{
-				"index": idx,
-				"name": instrument.Name(),
-				"filename": instrument.Filename(),
-			}).Info("Instrument")
+				"index":    idx,
+				"name":     sample.Name(),
+				"filename": sample.Filename(),
+			}).Info("Sample")
 		}
 
 		if (m.Type() == module.PROTRACKER) {
@@ -70,18 +70,18 @@ func dumpAll(infile string, dir string) error {
 	}).Info("Exporting all samples")
 
 	m, err := module.Load(infile)
-	instruments := m.Instruments()
+	samples := m.Samples()
 
 	destdir := filepath.Join(dir, filepath.Base(infile))
 	os.MkdirAll(destdir, 0755)
 
-	for idx, instrument := range instruments {
-		outdata := instrument.Data()
+	for idx, sample := range samples {
+		outdata := sample.Data()
 		if len(outdata) == 0 {
-			log.Debug("Ignoring instrument index ",idx)
+			log.Info("Ignoring sample index ",idx)
 			continue
 		}
-		destname := fmt.Sprintf("%d-%s",idx,stripRegex(instrument.Filename()))
+		destname := fmt.Sprintf("%d-%s",idx,stripRegex(sample.Filename()))
 		outpath := filepath.Join(destdir,destname)
 		err = ioutil.WriteFile(outpath, outdata, 0644)
 		if err != nil {

@@ -1,8 +1,8 @@
 package module
+
 import (
 	"encoding/binary"
 	"fmt"
-	"errors"
 )
 
 type FastTracker struct {
@@ -15,7 +15,7 @@ type FastTracker struct {
 	tempo uint16
 	bpm uint16
 	orderTable []byte
-	instruments []STInstrument
+	instruments []STSample
 	patterns []Pattern
 	Module
 }
@@ -39,11 +39,7 @@ func (m *FastTracker) Load(data []byte) (error) {
 	m.bpm = binary.LittleEndian.Uint16(data[78:80])
 	m.orderTable = data[80:336]
 
-
-
-	instrumentCount := binary.LittleEndian.Uint16(data[34:36])
-
-	return errors.New("Unsupported")
+	return nil
 }
 
 func (m *FastTracker) Play() {
@@ -62,3 +58,6 @@ func (m *FastTracker) Instruments() []Instrument {
 	return r
 }
 
+func (m *FastTracker) Samples() []Sample {
+	return []Sample{}
+}

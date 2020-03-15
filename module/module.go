@@ -10,6 +10,7 @@ const (
 	PROTRACKER = iota
 	SCREAMTRACKER
 	FASTTRACKER
+	IMPULSETRACKER
 )
 
 type Module interface {
@@ -18,13 +19,19 @@ type Module interface {
 	Play()
 	Type() FileFormat
 	Instruments() []Instrument
+	Samples() []Sample
 	NumPatterns() int
+}
+
+type Sample interface {
+	Name() string
+	Filename() string
+	Data() []byte
 }
 
 type Instrument interface {
 	Name() string
 	Filename() string
-	Data() []byte
 }
 
 func Load(modFile string) (Module,error) {
@@ -39,7 +46,6 @@ func Load(modFile string) (Module,error) {
 	}
 	f.Close()
 
-
 	// Determine file type
 	if (string(data[44:48]) == "SCRM") {
 		m := &ScreamTracker{}
@@ -49,6 +55,12 @@ func Load(modFile string) (Module,error) {
 
 	if (string(data[0:17]) == "Extended Module: ") {
 		m := &FastTracker{}
+		err = m.Load(data)
+		return m, err
+	}
+
+	if (string(data[0:4]) == "IMPM") {
+		m := &ImpulseTracker{}
 		err = m.Load(data)
 		return m, err
 	}
