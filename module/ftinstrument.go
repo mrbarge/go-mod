@@ -2,7 +2,7 @@ package module
 
 type FTInstrument struct {
 	name string
-	data []byte
+	samples []FTSample
 	Instrument
 }
 
@@ -19,5 +19,9 @@ func (i FTInstrument) Load(data []byte) (error) {
 }
 
 func (i FTInstrument) Data() []byte {
-	return i.data
+	if len(i.samples) > 0 {
+		return i.samples[0].Data()
+	} else {
+		return nil
+	}
 }
