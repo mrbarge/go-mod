@@ -1,6 +1,8 @@
 package module
 
 import (
+	"archive/zip"
+	"fmt"
 	"io/ioutil"
 	"os"
 )
@@ -36,15 +38,31 @@ type Instrument interface {
 
 func Load(modFile string) (Module,error) {
 
-	f, err := os.Open(modFile)
-	if err != nil {
-		panic(err)
+	// assume a zipfile
+	zf, err := zip.OpenReader(modFile)
+	var data []byte
+	if err == nil {
+		// TODO: > 1 file per zip
+		for _, file := range zf.File {
+			fc, err := file.Open()
+			defer fc.Close()
+			if err != nil {
+				return nil, err
+			}
+			fmt.Println(file.Name)
+			data, err = ioutil.ReadAll(fc)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		f, err := os.Open(modFile)
+		defer f.Close()
+		data, err = ioutil.ReadAll(f)
+		if err != nil {
+			panic(err)
+		}
 	}
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		panic(err)
-	}
-	f.Close()
 
 	// Determine file type
 	if (string(data[44:48]) == "SCRM") {
