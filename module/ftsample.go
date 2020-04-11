@@ -22,10 +22,6 @@ func (i FTSample) Filename() string {
 	return i.name
 }
 
-func (i FTSample) Load(data []byte) (error) {
-	return nil
-}
-
 func (i FTSample) Data() []byte {
 	return i.data
 }

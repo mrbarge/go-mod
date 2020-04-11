@@ -16,7 +16,7 @@ type FastTracker struct {
 	tempo uint16
 	bpm uint16
 	orderTable []byte
-	instruments []STSample
+	instruments []FTInstrument
 	patterns []Pattern
 	Module
 }
@@ -48,7 +48,6 @@ func (m *FastTracker) Load(data []byte) (error) {
 		offset += 2
 		patternDataSize := binary.LittleEndian.Uint16(data[offset:offset+2])
 		offset += 2
-		fmt.Printf("pat size %d\n",patternDataSize)
 		offset += int(patternDataSize)
 	}
 
@@ -102,16 +101,50 @@ func (m *FastTracker) Load(data []byte) (error) {
 			sampleOffset += 1
 			sample.name = string(data[sampleOffset:sampleOffset+22])
 			sampleOffset += 22
-			sample.data = data[sampleOffset:sampleOffset+int(sample.length)]
+
+			if ((1 << 4) & sample.sampleType) == 0 {
+				codedSampleData := data[sampleOffset:sampleOffset+int(sample.length)]
+				sample.data = decode8Bit(codedSampleData)
+			} else {
+				codedSampleData := data[sampleOffset:sampleOffset+int(sample.length)]
+				fmt.Println("16 bit ADPCM sample detected")
+				sample.data = decode16Bit(codedSampleData, sample.length)
+			}
 
 			offset += int(sampleSizes[j]) + int(sample.length)
-
 			instrument.samples = append(instrument.samples, sample)
 		}
+
+		m.instruments = append(m.instruments, instrument)
 	}
 
 	return nil
 
+}
+
+func decode8Bit(data []byte) []byte {
+
+	r := make([]byte, len(data))
+	old := int8(0)
+	for i, v := range data {
+		old += int8(v)
+		r[i] = byte(old)
+	}
+	return r
+}
+
+func decode16Bit(data []byte, sampleLength uint32) []byte {
+	old := int8(0)
+	r := make([]byte, sampleLength)
+	for i, j := 0, 0; i < len(data); i++ {
+		index := data[16 + i]
+		old += int8(data[index & 0xF])
+		r[j] = byte(old)
+		old += int8(data[index >> 4])
+		r[j + 1] = byte(old)
+		j += 2
+	}
+	return r
 }
 
 func (m *FastTracker) Play() {
@@ -131,7 +164,13 @@ func (m *FastTracker) Instruments() []Instrument {
 }
 
 func (m *FastTracker) Samples() []Sample {
-	return []Sample{}
+	r := make([]Sample, 0)
+	for _, instrument := range m.instruments {
+		for _, sample := range instrument.samples {
+			r = append(r, sample)
+		}
+	}
+	return r
 }
 
 func (m *FastTracker) NumPatterns() int {
