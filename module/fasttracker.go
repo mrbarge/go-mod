@@ -1,9 +1,9 @@
 package module
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
-	"strconv"
 )
 
 type FastTracker struct {
@@ -51,7 +51,6 @@ func (m *FastTracker) Load(data []byte) (error) {
 		offset += int(patternDataSize)
 	}
 
-	fmt.Println("Num Instruments " + strconv.Itoa(int(numInstruments)))
 	for i := 0; i < int(numInstruments); i++ {
 
 		instrument := FTInstrument{}
@@ -76,16 +75,17 @@ func (m *FastTracker) Load(data []byte) (error) {
 		instOffset += 38
 
 		offset += int(instHeaderSize)
+
 		// read sample datas
 		for j := 0; j < int(instNumSamples); j++ {
 			sample := FTSample{}
 
 			sampleOffset := offset
-			sample.length = binary.LittleEndian.Uint32(data[sampleOffset:sampleOffset+4])
+			sample.length = binary.LittleEndian.Uint32(data[sampleOffset : sampleOffset+4])
 			sampleOffset += 4
-			sample.loopStart = binary.LittleEndian.Uint32(data[sampleOffset:sampleOffset+4])
+			sample.loopStart = binary.LittleEndian.Uint32(data[sampleOffset : sampleOffset+4])
 			sampleOffset += 4
-			sample.loopEnd = binary.LittleEndian.Uint32(data[sampleOffset:sampleOffset+4])
+			sample.loopEnd = binary.LittleEndian.Uint32(data[sampleOffset : sampleOffset+4])
 			sampleOffset += 4
 			sample.volume = data[sampleOffset]
 			sampleOffset += 1
@@ -99,20 +99,25 @@ func (m *FastTracker) Load(data []byte) (error) {
 			sampleOffset += 1
 			sample.dataType = data[sampleOffset]
 			sampleOffset += 1
-			sample.name = string(data[sampleOffset:sampleOffset+22])
+			sample.name = string(data[sampleOffset : sampleOffset+22])
 			sampleOffset += 22
 
-			if ((1 << 4) & sample.sampleType) == 0 {
-				codedSampleData := data[sampleOffset:sampleOffset+int(sample.length)]
-				sample.data = decode8Bit(codedSampleData)
-			} else {
-				codedSampleData := data[sampleOffset:sampleOffset+int(sample.length)]
-				fmt.Println("16 bit ADPCM sample detected")
-				sample.data = decode16Bit(codedSampleData, sample.length)
-			}
-
-			offset += int(sampleSizes[j]) + int(sample.length)
 			instrument.samples = append(instrument.samples, sample)
+			offset = sampleOffset
+		}
+
+		for j := 0; j < int(instNumSamples); j++ {
+			sampleOffset := offset
+			if ((1 << 4) & instrument.samples[j].sampleType) == 0 {
+				fmt.Println(instrument.samples[j].length)
+				codedSampleData := data[sampleOffset:sampleOffset+int(instrument.samples[j].length)]
+				instrument.samples[j].data = decode8Bit(codedSampleData)
+				offset += int(instrument.samples[j].length)
+			} else {
+				codedSampleData := data[sampleOffset:sampleOffset+int(instrument.samples[j].length)]
+				instrument.samples[j].data = decode16Bit(codedSampleData, instrument.samples[j].length)
+				offset += int(instrument.samples[j].length)
+			}
 		}
 
 		m.instruments = append(m.instruments, instrument)
@@ -134,15 +139,19 @@ func decode8Bit(data []byte) []byte {
 }
 
 func decode16Bit(data []byte, sampleLength uint32) []byte {
-	old := int8(0)
-	r := make([]byte, sampleLength)
-	for i, j := 0, 0; i < len(data); i++ {
-		index := data[16 + i]
-		old += int8(data[index & 0xF])
-		r[j] = byte(old)
-		old += int8(data[index >> 4])
-		r[j + 1] = byte(old)
-		j += 2
+	r := make([]byte, len(data))
+	old := int16(0)
+	for _, v := range data {
+		old += int16(v)
+
+		buf := new(bytes.Buffer)
+		err := binary.Write(buf, binary.LittleEndian, old)
+		if err != nil {
+			fmt.Println("binary.Write failed:", err)
+		}
+
+		r = append(r, buf.Bytes()...)
+		//r[i] = byte(old)
 	}
 	return r
 }
