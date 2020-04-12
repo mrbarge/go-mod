@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"database/sql"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -8,9 +10,32 @@ import (
 	"go-mod/module"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+
+	_ "github.com/go-sql-driver/mysql"
 )
+
+type DBConfig struct {
+	host string
+	name string
+	user string
+	pass string
+	port string
+}
+
+func (d DBConfig) GetConnection() *sql.DB {
+
+	mysqlInfo := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+		d.user, d.pass, d.host, d.port, d.name)
+	db, err := sql.Open("mysql", mysqlInfo)
+	if err != nil {
+		panic(err)
+	}
+
+	return db
+}
 
 func info(file string) error {
 	log.WithFields(log.Fields{
@@ -96,6 +121,85 @@ func dumpAll(infile string, dir string) error {
 	return nil
 }
 
+func scanModForDB(inFile string, dbconn *sql.DB) error {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+	log.Info("Loading file ", inFile)
+	m, err := module.Load(inFile)
+	samples := m.Samples()
+
+	filename := path.Base(inFile)
+	insert, err := dbconn.Prepare("REPLACE INTO modfile(title, filename) VALUES (?,?)")
+	if err != nil {
+		return err
+	}
+	insert.Exec(m.Title(), filename)
+
+	// Delete any existing sample records
+	delete, err := dbconn.Prepare("DELETE FROM sample WHERE modfile = ?")
+	if err != nil {
+		return err
+	}
+	delete.Exec(filename)
+
+	// insert samples
+	for _, sample := range samples {
+		outdata := sample.Data()
+		if len(outdata) == 0 {
+			continue
+		}
+		checksum := sha256.Sum256(outdata)
+		sChecksum := fmt.Sprintf("%x",checksum)
+		sampleInsert, err := dbconn.Prepare("INSERT INTO sample(name, filename, sha256, modfile) VALUES (?,?,?,?)")
+		if err != nil {
+			return err
+		}
+		sampleInsert.Exec(sample.Name(), sample.Filename(), sChecksum, filename)
+	}
+
+	return nil
+}
+
+func createDB(inPath string, dbConfig DBConfig) error {
+
+	if !checkExists(inPath) {
+		return errors.New("Input file does not exist")
+	}
+
+	log.WithFields(log.Fields{
+		"inPath": inPath,
+	}).Info("Building sample DB")
+
+	dbconn := dbConfig.GetConnection()
+	err := dbconn.Ping()
+	if err != nil {
+		return err
+	}
+
+	filesToScan := make([]string, 0)
+	if info, err := os.Stat(inPath); err == nil && info.IsDir() {
+		files, err := ioutil.ReadDir(inPath)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			filesToScan = append(filesToScan, path.Join(inPath, f.Name()))
+		}
+	} else {
+		filesToScan = append(filesToScan, inPath)
+	}
+
+	for _, inFile := range filesToScan {
+		scanModForDB(inFile, dbconn)
+	}
+
+	dbconn.Close()
+	return nil
+}
+
 func checkExists(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
@@ -139,6 +243,34 @@ func main() {
 					return dumpAll(f, d)
 				},
 			},
+			&cli.Command{
+				Name: "create-sample-db",
+				Usage: "Create sample database.",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "file", Usage: "File to extract from." },
+					&cli.StringFlag{Name: "dir", Usage: "Dir to search." },
+					&cli.StringFlag{Name: "db-host", Usage: "Database host." },
+					&cli.StringFlag{Name: "db-name", Usage: "Database name." },
+					&cli.StringFlag{Name: "db-port", Usage: "Database port." },
+					&cli.StringFlag{Name: "db-user", Usage: "Database user." },
+					&cli.StringFlag{Name: "db-pass", Usage: "Database password." },
+				},
+				Action: func(c *cli.Context) error {
+					f := c.String("file")
+					dir := c.String("dir")
+					dbHost := c.String("db-host")
+					dbName := c.String("db-name")
+					dbPort := c.String("db-port")
+					dbUser := c.String("db-user")
+					dbPass := c.String("db-pass")
+					scanPath := f
+					if dir != "" {
+						scanPath = dir
+					}
+					return createDB(scanPath, DBConfig{ dbHost, dbName, dbUser, dbPass, dbPort})
+				},
+			},
+
 		},
 	}
 

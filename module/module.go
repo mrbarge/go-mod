@@ -2,7 +2,6 @@ package module
 
 import (
 	"archive/zip"
-	"fmt"
 	"io/ioutil"
 	"os"
 )
@@ -17,6 +16,7 @@ const (
 
 type Module interface {
 	Load(data []byte) error
+	Filename() string
 	Title() string
 	Play()
 	Type() FileFormat
@@ -49,7 +49,6 @@ func Load(modFile string) (Module,error) {
 			if err != nil {
 				return nil, err
 			}
-			fmt.Println(file.Name)
 			data, err = ioutil.ReadAll(fc)
 			if err != nil {
 				return nil, err

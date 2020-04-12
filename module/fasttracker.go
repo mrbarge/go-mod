@@ -109,7 +109,6 @@ func (m *FastTracker) Load(data []byte) (error) {
 		for j := 0; j < int(instNumSamples); j++ {
 			sampleOffset := offset
 			if ((1 << 4) & instrument.samples[j].sampleType) == 0 {
-				fmt.Println(instrument.samples[j].length)
 				codedSampleData := data[sampleOffset:sampleOffset+int(instrument.samples[j].length)]
 				instrument.samples[j].data = decode8Bit(codedSampleData)
 				offset += int(instrument.samples[j].length)
