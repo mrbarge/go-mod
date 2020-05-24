@@ -28,5 +28,10 @@ func (i STSample) Load(data []byte) (error) {
 }
 
 func (i STSample) Data() []byte {
-	return i.data
+	// return it as signed mono
+	r := make([]byte, len(i.data))
+	for i, v := range i.data {
+		r[i] = v + 128
+	}
+	return r
 }
