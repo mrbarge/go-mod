@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"go-mod/module"
@@ -13,8 +14,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 type DBConfig struct {
@@ -108,6 +107,7 @@ func dumpAll(infile string, dir string) error {
 		}
 		destname := fmt.Sprintf("%d-%s",idx,stripRegex(sample.Filename()))
 		outpath := filepath.Join(destdir,destname)
+
 		err = ioutil.WriteFile(outpath, outdata, 0644)
 		if err != nil {
 			return err
@@ -122,6 +122,7 @@ func dumpAll(infile string, dir string) error {
 }
 
 func scanModForDB(inFile string, dbconn *sql.DB) error {
+
 	defer func() {
 		if err := recover(); err != nil {
 			fmt.Println(err)
@@ -137,6 +138,7 @@ func scanModForDB(inFile string, dbconn *sql.DB) error {
 		return err
 	}
 	insert.Exec(m.Title(), filename)
+	insert.Close()
 
 	// Delete any existing sample records
 	delete, err := dbconn.Prepare("DELETE FROM sample WHERE modfile = ?")
@@ -144,20 +146,24 @@ func scanModForDB(inFile string, dbconn *sql.DB) error {
 		return err
 	}
 	delete.Exec(filename)
+	delete.Close()
 
 	// insert samples
-	for _, sample := range samples {
+	for i, sample := range samples {
 		outdata := sample.Data()
 		if len(outdata) == 0 {
 			continue
 		}
-		checksum := sha256.Sum256(outdata)
-		sChecksum := fmt.Sprintf("%x",checksum)
-		sampleInsert, err := dbconn.Prepare("INSERT INTO sample(name, filename, sha256, modfile) VALUES (?,?,?,?)")
+		hsh := sha256.New()
+		hsh.Write(outdata)
+		//checksum := sha256.Sum256(outdata)
+		sChecksum := fmt.Sprintf("%x",hsh.Sum(nil))
+		sampleInsert, err := dbconn.Prepare("INSERT INTO sample(name, filename, sha256, modfile, pos, len) VALUES (?,?,?,?,?,?)")
 		if err != nil {
 			return err
 		}
-		sampleInsert.Exec(sample.Name(), sample.Filename(), sChecksum, filename)
+		sampleInsert.Exec(sample.Name(), sample.Filename(), sChecksum, filename, int(i+1), len(sample.Data()))
+		sampleInsert.Close()
 	}
 
 	return nil
