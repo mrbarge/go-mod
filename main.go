@@ -395,6 +395,18 @@ func importPatterns(jsonFile string, output string) error {
 	// Build the MOD file binary
 	var modData []byte
 
+	// First, decode all sample data to get actual lengths
+	decodedSamples := make([][]byte, len(export.Samples))
+	for i, sample := range export.Samples {
+		if sample.Data != "" {
+			sampleData, err := base64.StdEncoding.DecodeString(sample.Data)
+			if err != nil {
+				return fmt.Errorf("failed to decode sample %d data: %w", sample.Number, err)
+			}
+			decodedSamples[i] = sampleData
+		}
+	}
+
 	// 1. Write title (20 bytes, padded with nulls)
 	title := make([]byte, 20)
 	copy(title, []byte(export.Title))
@@ -407,8 +419,9 @@ func importPatterns(jsonFile string, output string) error {
 			sample := export.Samples[i]
 			// Name (22 bytes)
 			copy(sampleMeta[0:22], []byte(sample.Name))
-			// Length in words (2 bytes, big endian)
-			lengthWords := uint16(sample.Length / 2)
+			// Length in words (2 bytes, big endian) - use actual decoded length
+			actualLength := len(decodedSamples[i])
+			lengthWords := uint16(actualLength / 2)
 			sampleMeta[22] = byte(lengthWords >> 8)
 			sampleMeta[23] = byte(lengthWords & 0xFF)
 			// Finetune (1 byte)
@@ -443,26 +456,38 @@ func importPatterns(jsonFile string, output string) error {
 
 	// 7. Write pattern data
 	for _, pattern := range export.Patterns {
-		// Each pattern is 64 rows × numChannels × 4 bytes
+		// Each pattern MUST be exactly 64 rows × numChannels × 4 bytes
+		rowMap := make(map[int]PatternExportRow)
 		for _, row := range pattern.Rows {
-			for _, channel := range row.Channels {
+			rowMap[row.RowNumber] = row
+		}
+
+		for rowIdx := 0; rowIdx < 64; rowIdx++ {
+			row, exists := rowMap[rowIdx]
+
+			for chanIdx := 0; chanIdx < export.NumChannels; chanIdx++ {
 				// Encode note as 4 bytes
 				noteBytes := make([]byte, 4)
 
-				// Byte 0: upper 4 bits of sample + upper 4 bits of period
-				// Byte 1: lower 8 bits of period
-				// Byte 2: lower 4 bits of sample + effect
-				// Byte 3: effect parameter
+				if exists && chanIdx < len(row.Channels) {
+					channel := row.Channels[chanIdx]
 
-				period := uint16(channel.Period)
-				instrument := byte(channel.Instrument)
-				effect := byte(channel.Effect)
-				parameter := byte(channel.Parameter)
+					// Byte 0: upper 4 bits of sample + upper 4 bits of period
+					// Byte 1: lower 8 bits of period
+					// Byte 2: lower 4 bits of sample + effect
+					// Byte 3: effect parameter
 
-				noteBytes[0] = (instrument & 0xF0) | byte((period>>8)&0x0F)
-				noteBytes[1] = byte(period & 0xFF)
-				noteBytes[2] = ((instrument & 0x0F) << 4) | (effect & 0x0F)
-				noteBytes[3] = parameter
+					period := uint16(channel.Period)
+					instrument := byte(channel.Instrument)
+					effect := byte(channel.Effect)
+					parameter := byte(channel.Parameter)
+
+					noteBytes[0] = (instrument & 0xF0) | byte((period>>8)&0x0F)
+					noteBytes[1] = byte(period & 0xFF)
+					noteBytes[2] = ((instrument & 0x0F) << 4) | (effect & 0x0F)
+					noteBytes[3] = parameter
+				}
+				// else: noteBytes remains all zeros (empty note)
 
 				modData = append(modData, noteBytes...)
 			}
@@ -470,12 +495,8 @@ func importPatterns(jsonFile string, output string) error {
 	}
 
 	// 8. Write sample data
-	for _, sample := range export.Samples {
-		if sample.Data != "" {
-			sampleData, err := base64.StdEncoding.DecodeString(sample.Data)
-			if err != nil {
-				return fmt.Errorf("failed to decode sample %d data: %w", sample.Number, err)
-			}
+	for _, sampleData := range decodedSamples {
+		if len(sampleData) > 0 {
 			modData = append(modData, sampleData...)
 		}
 	}
