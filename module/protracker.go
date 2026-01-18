@@ -3,7 +3,7 @@ package module
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/alexcesaro/log/stdlog"
+	"log/slog"
 	"errors"
 )
 
@@ -67,7 +67,7 @@ func (m *ProTracker) Load(data []byte) error {
 
 	// Start reading the pattern data
 	numPatterns := m.NumPatterns()
-	stdlog.GetFromFlags().Debugf("Starting to read %d patterns starting at offset %d",numPatterns,offset)
+	slog.Debug("Starting to read patterns", "num-patterns", numPatterns, "offset", offset)
 	m.patterns = make([]Pattern, numPatterns, numPatterns)
 	for i := 0; i < numPatterns; i++ {
 		pattern := Pattern{rows:make([]Row,64), numChannels:m.numChannels}
@@ -115,10 +115,10 @@ func (m *ProTracker) Load(data []byte) error {
 
 	//for i := 0; i < len(m.samples); i++ {
 	//	sample := m.samples[i]
-	//	stdlog.GetFromFlags().Debugf("Loading sample %d at offset %d of length %d (%s)",i,offset, sample.length, sample.name)
+	//	slog.Debug("Loading sample", "index", i, "offset", offset, "length", sample.length, "name", sample.name)
 	//}
 	//
-	stdlog.GetFromFlags().Debugf("I'm done at offset %d and length was %d",offset,length)
+	slog.Debug("Done loading", "offset", offset, "length", length)
 	return nil
 }
 

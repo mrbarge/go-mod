@@ -3,17 +3,17 @@ package main
 import (
 	"crypto/sha256"
 	"database/sql"
-	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
-	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli/v2"
-	"go-mod/module"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/spf13/cobra"
+	"log/slog"
+
+	"go-mod/module"
 )
 
 type DBConfig struct {
@@ -37,22 +37,16 @@ func (d DBConfig) GetConnection() *sql.DB {
 }
 
 func info(file string) error {
-	log.WithFields(log.Fields{
-		"file": file,
-	}).Info("Printing Info")
+	slog.Info("Printing Info", "file", file)
 
 	m, err := module.Load(file)
 	if (err == nil) {
-		log.WithFields(log.Fields{
-			"title": m.Title(),
-			"num-patterns": m.NumPatterns(),
-		}).Info("Info")
+		slog.Info("Info", "title", m.Title(), "num-patterns", m.NumPatterns())
 		for idx, sample := range m.Samples() {
-			log.WithFields(log.Fields{
-				"index":    idx,
-				"name":     sample.Name(),
-				"filename": sample.Filename(),
-			}).Info("Sample")
+			slog.Info("Sample",
+				"index", idx,
+				"name", sample.Name(),
+				"filename", sample.Filename())
 		}
 
 		if (m.Type() == module.PROTRACKER) {
@@ -64,11 +58,10 @@ func info(file string) error {
 				}
 				pattern, err := pt.GetPattern(patternNum)
 				if (err == nil) {
-					log.WithFields(log.Fields{
-						"seq-no": idx,
-						"pattern": patternNum,
-						"channel": pattern.NumChannels(),
-					}).Info()
+					slog.Info("Pattern",
+						"seq-no", idx,
+						"pattern", patternNum,
+						"channel", pattern.NumChannels())
 				}
 			}
 		}
@@ -81,41 +74,39 @@ func info(file string) error {
 }
 
 func dumpAll(infile string, dir string) error {
-
 	if !checkExists(infile) {
-		return errors.New("Input file does not exist")
-	} else if !checkExists(dir) {
-		return errors.New("Output dir does not exist")
+		return fmt.Errorf("input file does not exist: %s", infile)
+	}
+	if !checkExists(dir) {
+		return fmt.Errorf("output directory does not exist: %s", dir)
 	}
 
-	log.WithFields(log.Fields{
-		"infile": infile,
-		"dir": dir,
-	}).Info("Exporting all samples")
+	slog.Info("Exporting all samples", "infile", infile, "dir", dir)
 
 	m, err := module.Load(infile)
+	if err != nil {
+		return fmt.Errorf("failed to load module: %w", err)
+	}
 	samples := m.Samples()
 
 	destdir := filepath.Join(dir, filepath.Base(infile))
-	os.MkdirAll(destdir, 0755)
+	if err := os.MkdirAll(destdir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
 
 	for idx, sample := range samples {
 		outdata := sample.Data()
 		if len(outdata) == 0 {
-			log.Info("Ignoring sample index ",idx)
+			slog.Info("Ignoring sample index", "index", idx)
 			continue
 		}
-		destname := fmt.Sprintf("%d-%s",idx,stripRegex(sample.Filename()))
-		outpath := filepath.Join(destdir,destname)
+		destname := fmt.Sprintf("%d-%s", idx, stripRegex(sample.Filename()))
+		outpath := filepath.Join(destdir, destname)
 
-		err = ioutil.WriteFile(outpath, outdata, 0644)
-		if err != nil {
-			return err
+		if err := os.WriteFile(outpath, outdata, 0644); err != nil {
+			return fmt.Errorf("failed to write file %s: %w", outpath, err)
 		}
-		log.WithFields(log.Fields{
-			"num-bytes": len(outdata),
-			"out-file": outpath,
-		}).Info("Wrote")
+		slog.Info("Wrote", "num-bytes", len(outdata), "out-file", outpath)
 	}
 
 	return nil
@@ -128,7 +119,7 @@ func scanModForDB(inFile string, dbconn *sql.DB) error {
 			fmt.Println(err)
 		}
 	}()
-	log.Info("Loading file ", inFile)
+	slog.Info("Loading file", "file", inFile)
 	m, err := module.Load(inFile)
 	samples := m.Samples()
 
@@ -170,39 +161,38 @@ func scanModForDB(inFile string, dbconn *sql.DB) error {
 }
 
 func createDB(inPath string, dbConfig DBConfig) error {
-
 	if !checkExists(inPath) {
-		return errors.New("Input file does not exist")
+		return fmt.Errorf("input path does not exist: %s", inPath)
 	}
 
-	log.WithFields(log.Fields{
-		"inPath": inPath,
-	}).Info("Building sample DB")
+	slog.Info("Building sample DB", "inPath", inPath)
 
 	dbconn := dbConfig.GetConnection()
-	err := dbconn.Ping()
-	if err != nil {
-		return err
+	defer dbconn.Close()
+
+	if err := dbconn.Ping(); err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	filesToScan := make([]string, 0)
+	var filesToScan []string
 	if info, err := os.Stat(inPath); err == nil && info.IsDir() {
-		files, err := ioutil.ReadDir(inPath)
+		entries, err := os.ReadDir(inPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to read directory: %w", err)
 		}
-		for _, f := range files {
-			filesToScan = append(filesToScan, path.Join(inPath, f.Name()))
+		for _, entry := range entries {
+			filesToScan = append(filesToScan, path.Join(inPath, entry.Name()))
 		}
 	} else {
 		filesToScan = append(filesToScan, inPath)
 	}
 
 	for _, inFile := range filesToScan {
-		scanModForDB(inFile, dbconn)
+		if err := scanModForDB(inFile, dbconn); err != nil {
+			slog.Warn("Failed to scan file", "file", inFile, "error", err)
+		}
 	}
 
-	dbconn.Close()
 	return nil
 }
 
@@ -220,69 +210,73 @@ func stripRegex(in string) string {
 }
 
 func main() {
+	var rootCmd = &cobra.Command{
+		Use:   "go-mod",
+		Short: "A tool for working with MOD music files",
+		Long:  "go-mod provides utilities for analyzing and extracting data from ProTracker, FastTracker, and other MOD format music files.",
+	}
 
-	app := &cli.App {
-		Name: "go-mod",
-		Usage: "Do fun things with mod files.",
-		Commands: []*cli.Command {
-			&cli.Command {
-				Name: "info",
-				Usage: "Print info about a file.",
-				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "file", Usage: "File to show" },
-				},
-				Action: func(c *cli.Context) error {
-					f := c.String("file")
-					return info(f)
-				},
-			},
-			&cli.Command{
-				Name: "dump-samples",
-				Usage: "Dump all instrument samples.",
-				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "file", Usage: "File to extract from." },
-					&cli.StringFlag{Name: "dir", Usage: "Directory to write to." },
-				},
-				Action: func(c *cli.Context) error {
-					f := c.String("file")
-					d := c.String("dir")
-					return dumpAll(f, d)
-				},
-			},
-			&cli.Command{
-				Name: "create-sample-db",
-				Usage: "Create sample database.",
-				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "file", Usage: "File to extract from." },
-					&cli.StringFlag{Name: "dir", Usage: "Dir to search." },
-					&cli.StringFlag{Name: "db-host", Usage: "Database host." },
-					&cli.StringFlag{Name: "db-name", Usage: "Database name." },
-					&cli.StringFlag{Name: "db-port", Usage: "Database port." },
-					&cli.StringFlag{Name: "db-user", Usage: "Database user." },
-					&cli.StringFlag{Name: "db-pass", Usage: "Database password." },
-				},
-				Action: func(c *cli.Context) error {
-					f := c.String("file")
-					dir := c.String("dir")
-					dbHost := c.String("db-host")
-					dbName := c.String("db-name")
-					dbPort := c.String("db-port")
-					dbUser := c.String("db-user")
-					dbPass := c.String("db-pass")
-					scanPath := f
-					if dir != "" {
-						scanPath = dir
-					}
-					return createDB(scanPath, DBConfig{ dbHost, dbName, dbUser, dbPass, dbPort})
-				},
-			},
-
+	// Info command
+	var infoCmd = &cobra.Command{
+		Use:   "info [file]",
+		Short: "Print info about a MOD file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return info(args[0])
 		},
 	}
 
-	err := app.Run(os.Args)
-	if err != nil {
-		log.Fatal(err)
+	// Dump samples command
+	var dumpCmd = &cobra.Command{
+		Use:   "dump-samples [file]",
+		Short: "Dump all instrument samples from a MOD file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			if dir == "" {
+				return fmt.Errorf("--dir flag is required")
+			}
+			return dumpAll(args[0], dir)
+		},
 	}
+	dumpCmd.Flags().StringP("dir", "d", "", "Directory to write samples to (required)")
+	dumpCmd.MarkFlagRequired("dir")
 
+	// Create sample database command
+	var dbCmd = &cobra.Command{
+		Use:   "create-sample-db [path]",
+		Short: "Create sample database from MOD file(s)",
+		Long:  "Scan a MOD file or directory of MOD files and store sample information in a database.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dbHost, _ := cmd.Flags().GetString("db-host")
+			dbName, _ := cmd.Flags().GetString("db-name")
+			dbPort, _ := cmd.Flags().GetString("db-port")
+			dbUser, _ := cmd.Flags().GetString("db-user")
+			dbPass, _ := cmd.Flags().GetString("db-pass")
+
+			config := DBConfig{
+				host: dbHost,
+				name: dbName,
+				user: dbUser,
+				pass: dbPass,
+				port: dbPort,
+			}
+			return createDB(args[0], config)
+		},
+	}
+	dbCmd.Flags().String("db-host", "localhost", "Database host")
+	dbCmd.Flags().String("db-name", "", "Database name (required)")
+	dbCmd.Flags().String("db-port", "3306", "Database port")
+	dbCmd.Flags().String("db-user", "", "Database user (required)")
+	dbCmd.Flags().String("db-pass", "", "Database password")
+	dbCmd.MarkFlagRequired("db-name")
+	dbCmd.MarkFlagRequired("db-user")
+
+	rootCmd.AddCommand(infoCmd, dumpCmd, dbCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		slog.Error("Command failed", "error", err)
+		os.Exit(1)
+	}
 }

@@ -1,10 +1,16 @@
 module go-mod
 
-go 1.12
+go 1.24.0
+
+toolchain go1.24.11
 
 require (
-	github.com/alexcesaro/log v0.0.0-20150915221235-61e686294e58
-	github.com/go-sql-driver/mysql v1.5.0
-	github.com/sirupsen/logrus v1.4.2
-	github.com/urfave/cli/v2 v2.1.1
+	github.com/go-sql-driver/mysql v1.9.3
+	github.com/spf13/cobra v1.10.2
+)
+
+require (
+	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 )
