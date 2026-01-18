@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -209,6 +211,284 @@ func stripRegex(in string) string {
 	return reg.ReplaceAllString(in, "")
 }
 
+// JSON export structures for pattern data
+type PatternExportNote struct {
+	Note       string `json:"note"`
+	Period     int    `json:"period"`
+	Instrument int    `json:"instrument"`
+	Effect     int    `json:"effect"`
+	Parameter  int    `json:"parameter"`
+}
+
+type PatternExportRow struct {
+	RowNumber int                  `json:"row"`
+	Channels  []PatternExportNote  `json:"channels"`
+}
+
+type PatternExport struct {
+	PatternNumber int                 `json:"pattern_number"`
+	NumChannels   int                 `json:"num_channels"`
+	NumRows       int                 `json:"num_rows"`
+	Rows          []PatternExportRow  `json:"rows"`
+}
+
+type SampleExport struct {
+	Number       int    `json:"number"`
+	Name         string `json:"name"`
+	Length       int    `json:"length"`
+	Finetune     int    `json:"finetune"`
+	Volume       int    `json:"volume"`
+	RepeatOffset int    `json:"repeat_offset"`
+	RepeatLength int    `json:"repeat_length"`
+	Data         string `json:"data"` // Base64 encoded
+}
+
+type ModulePatternExport struct {
+	Title           string          `json:"title"`
+	SongLength      int             `json:"song_length"`
+	RestartPosition int             `json:"restart_position"`
+	NumChannels     int             `json:"num_channels"`
+	PatternOrder    []int           `json:"pattern_order"`
+	Samples         []SampleExport  `json:"samples"`
+	Patterns        []PatternExport `json:"patterns"`
+}
+
+func dumpPatterns(infile string, output string) error {
+	if !checkExists(infile) {
+		return fmt.Errorf("input file does not exist: %s", infile)
+	}
+
+	slog.Info("Loading module", "file", infile)
+	m, err := module.Load(infile)
+	if err != nil {
+		return fmt.Errorf("failed to load module: %w", err)
+	}
+
+	// Only support ProTracker format for now
+	if m.Type() != module.PROTRACKER {
+		return fmt.Errorf("only ProTracker format is currently supported")
+	}
+
+	pt := m.(*module.ProTracker)
+
+	// Build pattern order from sequence table
+	patternOrder := make([]int, pt.SongLength())
+	for i := 0; i < int(pt.SongLength()); i++ {
+		patternOrder[i] = int(pt.SequenceTable()[i])
+	}
+
+	// Export samples
+	samples := make([]SampleExport, 0)
+	for idx, sample := range pt.Samples() {
+		ptSample := sample.(module.PTSample)
+		sampleExport := SampleExport{
+			Number:       idx + 1,
+			Name:         ptSample.Name(),
+			Length:       int(ptSample.Length()),
+			Finetune:     int(ptSample.Finetune()),
+			Volume:       int(ptSample.Volume()),
+			RepeatOffset: int(ptSample.RepeatOffset()),
+			RepeatLength: int(ptSample.RepeatLength()),
+			Data:         base64.StdEncoding.EncodeToString(ptSample.Data()),
+		}
+		samples = append(samples, sampleExport)
+	}
+
+	// Export all patterns
+	patterns := make([]PatternExport, 0)
+	for patNum := 0; patNum < pt.NumPatterns(); patNum++ {
+		pattern, err := pt.GetPattern(int8(patNum))
+		if err != nil {
+			slog.Warn("Failed to get pattern", "pattern", patNum, "error", err)
+			continue
+		}
+
+		patternExport := PatternExport{
+			PatternNumber: patNum,
+			NumChannels:   pattern.NumChannels(),
+			NumRows:       pattern.NumRows(),
+			Rows:          make([]PatternExportRow, 0),
+		}
+
+		for rowIdx := 0; rowIdx < pattern.NumRows(); rowIdx++ {
+			row, err := pattern.GetRow(rowIdx)
+			if err != nil {
+				continue
+			}
+
+			notes := row.Notes()
+			channels := make([]PatternExportNote, pattern.NumChannels())
+			for chanIdx := 0; chanIdx < pattern.NumChannels(); chanIdx++ {
+				note := notes[chanIdx]
+				noteStr := "---"
+				if note.Period() > 0 {
+					if str, err := note.ToString(); err == nil {
+						noteStr = str
+					}
+				}
+
+				channels[chanIdx] = PatternExportNote{
+					Note:       noteStr,
+					Period:     note.Period(),
+					Instrument: note.Instrument(),
+					Effect:     note.Effect(),
+					Parameter:  note.Parameter(),
+				}
+			}
+
+			patternExport.Rows = append(patternExport.Rows, PatternExportRow{
+				RowNumber: rowIdx,
+				Channels:  channels,
+			})
+		}
+
+		patterns = append(patterns, patternExport)
+	}
+
+	export := ModulePatternExport{
+		Title:           pt.Title(),
+		SongLength:      int(pt.SongLength()),
+		RestartPosition: pt.RestartPos(),
+		NumChannels:     pt.NumChannels(),
+		PatternOrder:    patternOrder,
+		Samples:         samples,
+		Patterns:        patterns,
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.MarshalIndent(export, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	// Write to file or stdout
+	if output == "-" || output == "" {
+		fmt.Println(string(jsonData))
+	} else {
+		if err := os.WriteFile(output, jsonData, 0644); err != nil {
+			return fmt.Errorf("failed to write output file: %w", err)
+		}
+		slog.Info("Pattern data exported", "output", output)
+	}
+
+	return nil
+}
+
+func importPatterns(jsonFile string, output string) error {
+	if !checkExists(jsonFile) {
+		return fmt.Errorf("input JSON file does not exist: %s", jsonFile)
+	}
+
+	slog.Info("Loading JSON file", "file", jsonFile)
+	jsonData, err := os.ReadFile(jsonFile)
+	if err != nil {
+		return fmt.Errorf("failed to read JSON file: %w", err)
+	}
+
+	var export ModulePatternExport
+	if err := json.Unmarshal(jsonData, &export); err != nil {
+		return fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	slog.Info("Building MOD file", "title", export.Title)
+
+	// Build the MOD file binary
+	var modData []byte
+
+	// 1. Write title (20 bytes, padded with nulls)
+	title := make([]byte, 20)
+	copy(title, []byte(export.Title))
+	modData = append(modData, title...)
+
+	// 2. Write sample metadata (31 samples × 30 bytes each)
+	for i := 0; i < 31; i++ {
+		sampleMeta := make([]byte, 30)
+		if i < len(export.Samples) {
+			sample := export.Samples[i]
+			// Name (22 bytes)
+			copy(sampleMeta[0:22], []byte(sample.Name))
+			// Length in words (2 bytes, big endian)
+			lengthWords := uint16(sample.Length / 2)
+			sampleMeta[22] = byte(lengthWords >> 8)
+			sampleMeta[23] = byte(lengthWords & 0xFF)
+			// Finetune (1 byte)
+			sampleMeta[24] = byte(sample.Finetune)
+			// Volume (1 byte)
+			sampleMeta[25] = byte(sample.Volume)
+			// Repeat offset in words (2 bytes, big endian)
+			sampleMeta[26] = byte(sample.RepeatOffset >> 8)
+			sampleMeta[27] = byte(sample.RepeatOffset & 0xFF)
+			// Repeat length in words (2 bytes, big endian)
+			sampleMeta[28] = byte(sample.RepeatLength >> 8)
+			sampleMeta[29] = byte(sample.RepeatLength & 0xFF)
+		}
+		modData = append(modData, sampleMeta...)
+	}
+
+	// 3. Write song length (1 byte)
+	modData = append(modData, byte(export.SongLength))
+
+	// 4. Write restart position (1 byte) - legacy, usually 127
+	modData = append(modData, byte(export.RestartPosition))
+
+	// 5. Write pattern order table (128 bytes)
+	patternOrder := make([]byte, 128)
+	for i := 0; i < len(export.PatternOrder) && i < 128; i++ {
+		patternOrder[i] = byte(export.PatternOrder[i])
+	}
+	modData = append(modData, patternOrder...)
+
+	// 6. Write magic number "M.K." for 4-channel MOD
+	modData = append(modData, []byte("M.K.")...)
+
+	// 7. Write pattern data
+	for _, pattern := range export.Patterns {
+		// Each pattern is 64 rows × numChannels × 4 bytes
+		for _, row := range pattern.Rows {
+			for _, channel := range row.Channels {
+				// Encode note as 4 bytes
+				noteBytes := make([]byte, 4)
+
+				// Byte 0: upper 4 bits of sample + upper 4 bits of period
+				// Byte 1: lower 8 bits of period
+				// Byte 2: lower 4 bits of sample + effect
+				// Byte 3: effect parameter
+
+				period := uint16(channel.Period)
+				instrument := byte(channel.Instrument)
+				effect := byte(channel.Effect)
+				parameter := byte(channel.Parameter)
+
+				noteBytes[0] = (instrument & 0xF0) | byte((period>>8)&0x0F)
+				noteBytes[1] = byte(period & 0xFF)
+				noteBytes[2] = ((instrument & 0x0F) << 4) | (effect & 0x0F)
+				noteBytes[3] = parameter
+
+				modData = append(modData, noteBytes...)
+			}
+		}
+	}
+
+	// 8. Write sample data
+	for _, sample := range export.Samples {
+		if sample.Data != "" {
+			sampleData, err := base64.StdEncoding.DecodeString(sample.Data)
+			if err != nil {
+				return fmt.Errorf("failed to decode sample %d data: %w", sample.Number, err)
+			}
+			modData = append(modData, sampleData...)
+		}
+	}
+
+	// Write to output file
+	if err := os.WriteFile(output, modData, 0644); err != nil {
+		return fmt.Errorf("failed to write MOD file: %w", err)
+	}
+
+	slog.Info("MOD file created", "output", output, "size", len(modData))
+	return nil
+}
+
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "go-mod",
@@ -242,6 +522,30 @@ func main() {
 	dumpCmd.Flags().StringP("dir", "d", "", "Directory to write samples to (required)")
 	dumpCmd.MarkFlagRequired("dir")
 
+	// Dump patterns command
+	var dumpPatternsCmd = &cobra.Command{
+		Use:   "dump-patterns [file]",
+		Short: "Export pattern data to JSON format",
+		Long:  "Export all pattern data including pattern order, notes, instruments, and effects to JSON format.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			output, _ := cmd.Flags().GetString("output")
+			return dumpPatterns(args[0], output)
+		},
+	}
+	dumpPatternsCmd.Flags().StringP("output", "o", "-", "Output file (use '-' for stdout)")
+
+	// Import patterns command
+	var importPatternsCmd = &cobra.Command{
+		Use:   "import-patterns [json-file] [output-mod]",
+		Short: "Recreate a MOD file from JSON format",
+		Long:  "Import pattern and sample data from JSON and recreate the original MOD file.",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return importPatterns(args[0], args[1])
+		},
+	}
+
 	// Create sample database command
 	var dbCmd = &cobra.Command{
 		Use:   "create-sample-db [path]",
@@ -273,7 +577,7 @@ func main() {
 	dbCmd.MarkFlagRequired("db-name")
 	dbCmd.MarkFlagRequired("db-user")
 
-	rootCmd.AddCommand(infoCmd, dumpCmd, dbCmd)
+	rootCmd.AddCommand(infoCmd, dumpCmd, dumpPatternsCmd, importPatternsCmd, dbCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("Command failed", "error", err)

@@ -101,8 +101,8 @@ func (m *ProTracker) Load(data []byte) error {
 		sample.length = int64(binary.BigEndian.Uint16(sampleData[22:24])) * 2
 		sample.finetune = int8(sampleData[24])
 		sample.volume = int8(sampleData[25])
-		sample.repeatOffset = binary.BigEndian.Uint16(sampleData[25:27])
-		sample.repeatLength = binary.BigEndian.Uint16(sampleData[27:29])
+		sample.repeatOffset = binary.BigEndian.Uint16(sampleData[26:28])
+		sample.repeatLength = binary.BigEndian.Uint16(sampleData[28:30])
 		sample.data = data[offset:offset+int(sample.length)]
 		// Sanity check for enough data remaining in the buffer
 		if (offset + int(sample.length) > length) {
@@ -179,4 +179,12 @@ func (m *ProTracker) GetPattern(patternNumber int8) (Pattern,error) {
 	} else {
 		return m.patterns[patternNumber], nil
 	}
+}
+
+func (m *ProTracker) NumChannels() int {
+	return int(m.numChannels)
+}
+
+func (m *ProTracker) RestartPos() int {
+	return int(m.restartPos)
 }

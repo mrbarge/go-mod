@@ -45,10 +45,16 @@ var notes = []string {
 
 func (n *Note) Load(data []byte) error {
 
-	n.period = int( ( (data[0] & 0xF) << 8) | ( data[1] & 0xFF) )
-	n.instrument = int(( data[0] & 0x10 ) | ( ( data[2] & 0xF0) >> 4))
-	n.effect = int(data[2] & 0xF)
-	n.parameter = int(data[3] & 0xFF)
+	periodUpper := int(data[0] & 0x0F)
+	periodLower := int(data[1])
+	n.period = (periodUpper << 8) | periodLower
+
+	instrumentUpper := int(data[0] & 0xF0)
+	instrumentLower := int((data[2] & 0xF0) >> 4)
+	n.instrument = instrumentUpper | instrumentLower
+
+	n.effect = int(data[2] & 0x0F)
+	n.parameter = int(data[3])
 
 	return nil
 }
@@ -100,4 +106,21 @@ func periodToString(periodPos int, octave int) (string,error) {
 			return fmt.Sprintf("%s-%d", pitch, octave),nil
 		}
 	}
+}
+
+// Getters for exporting note data
+func (n *Note) Period() int {
+	return n.period
+}
+
+func (n *Note) Instrument() int {
+	return n.instrument
+}
+
+func (n *Note) Effect() int {
+	return n.effect
+}
+
+func (n *Note) Parameter() int {
+	return n.parameter
 }

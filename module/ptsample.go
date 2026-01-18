@@ -26,3 +26,19 @@ func (i PTSample) Length() int64 {
 func (i PTSample) Data() []byte {
 	return i.data
 }
+
+func (i PTSample) Finetune() int8 {
+	return i.finetune
+}
+
+func (i PTSample) Volume() int8 {
+	return i.volume
+}
+
+func (i PTSample) RepeatOffset() uint16 {
+	return i.repeatOffset
+}
+
+func (i PTSample) RepeatLength() uint16 {
+	return i.repeatLength
+}
