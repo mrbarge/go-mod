@@ -243,14 +243,44 @@ type SampleExport struct {
 	Data         string `json:"data"` // Base64 encoded
 }
 
+// XM-specific structures
+type XMSampleExport struct {
+	Number       int    `json:"number"`
+	Name         string `json:"name"`
+	Length       uint32 `json:"length"`
+	LoopStart    uint32 `json:"loop_start"`
+	LoopEnd      uint32 `json:"loop_end"`
+	Volume       uint8  `json:"volume"`
+	Finetune     uint8  `json:"finetune"`
+	SampleType   uint8  `json:"sample_type"`
+	Panning      uint8  `json:"panning"`
+	RelativeNote uint8  `json:"relative_note"`
+	DataType     uint8  `json:"data_type"`
+	Data         string `json:"data"` // Base64 encoded
+}
+
+type InstrumentExport struct {
+	Number  int              `json:"number"`
+	Name    string           `json:"name"`
+	Samples []XMSampleExport `json:"samples"`
+}
+
 type ModulePatternExport struct {
-	Title           string          `json:"title"`
-	SongLength      int             `json:"song_length"`
-	RestartPosition int             `json:"restart_position"`
-	NumChannels     int             `json:"num_channels"`
-	PatternOrder    []int           `json:"pattern_order"`
-	Samples         []SampleExport  `json:"samples"`
-	Patterns        []PatternExport `json:"patterns"`
+	Format          string             `json:"format,omitempty"`       // "protracker" or "fasttracker"
+	Title           string             `json:"title"`
+	SongLength      int                `json:"song_length"`
+	RestartPosition int                `json:"restart_position"`
+	NumChannels     int                `json:"num_channels"`
+	PatternOrder    []int              `json:"pattern_order"`
+	Samples         []SampleExport     `json:"samples"`
+	Patterns        []PatternExport    `json:"patterns"`
+	// XM-specific fields (omitted for MOD files)
+	Author      string              `json:"author,omitempty"`
+	Version     uint16              `json:"version,omitempty"`
+	Flags       uint16              `json:"flags,omitempty"`
+	Tempo       uint16              `json:"tempo,omitempty"`
+	BPM         uint16              `json:"bpm,omitempty"`
+	Instruments []InstrumentExport  `json:"instruments,omitempty"`
 }
 
 func dumpPatterns(infile string, output string) error {
@@ -264,95 +294,177 @@ func dumpPatterns(infile string, output string) error {
 		return fmt.Errorf("failed to load module: %w", err)
 	}
 
-	// Only support ProTracker format for now
-	if m.Type() != module.PROTRACKER {
-		return fmt.Errorf("only ProTracker format is currently supported")
-	}
+	var export ModulePatternExport
 
-	pt := m.(*module.ProTracker)
+	// Handle different module formats
+	switch m.Type() {
+	case module.PROTRACKER:
+		pt := m.(*module.ProTracker)
 
-	// Build pattern order from sequence table
-	patternOrder := make([]int, pt.SongLength())
-	for i := 0; i < int(pt.SongLength()); i++ {
-		patternOrder[i] = int(pt.SequenceTable()[i])
-	}
-
-	// Export samples
-	samples := make([]SampleExport, 0)
-	for idx, sample := range pt.Samples() {
-		ptSample := sample.(module.PTSample)
-		sampleExport := SampleExport{
-			Number:       idx + 1,
-			Name:         ptSample.Name(),
-			Length:       int(ptSample.Length()),
-			Finetune:     int(ptSample.Finetune()),
-			Volume:       int(ptSample.Volume()),
-			RepeatOffset: int(ptSample.RepeatOffset()),
-			RepeatLength: int(ptSample.RepeatLength()),
-			Data:         base64.StdEncoding.EncodeToString(ptSample.Data()),
-		}
-		samples = append(samples, sampleExport)
-	}
-
-	// Export all patterns
-	patterns := make([]PatternExport, 0)
-	for patNum := 0; patNum < pt.NumPatterns(); patNum++ {
-		pattern, err := pt.GetPattern(int8(patNum))
-		if err != nil {
-			slog.Warn("Failed to get pattern", "pattern", patNum, "error", err)
-			continue
+		// Build pattern order from sequence table
+		patternOrder := make([]int, pt.SongLength())
+		for i := 0; i < int(pt.SongLength()); i++ {
+			patternOrder[i] = int(pt.SequenceTable()[i])
 		}
 
-		patternExport := PatternExport{
-			PatternNumber: patNum,
-			NumChannels:   pattern.NumChannels(),
-			NumRows:       pattern.NumRows(),
-			Rows:          make([]PatternExportRow, 0),
+		// Export samples
+		samples := make([]SampleExport, 0)
+		for idx, sample := range pt.Samples() {
+			ptSample := sample.(module.PTSample)
+			sampleExport := SampleExport{
+				Number:       idx + 1,
+				Name:         ptSample.Name(),
+				Length:       int(ptSample.Length()),
+				Finetune:     int(ptSample.Finetune()),
+				Volume:       int(ptSample.Volume()),
+				RepeatOffset: int(ptSample.RepeatOffset()),
+				RepeatLength: int(ptSample.RepeatLength()),
+				Data:         base64.StdEncoding.EncodeToString(ptSample.Data()),
+			}
+			samples = append(samples, sampleExport)
 		}
 
-		for rowIdx := 0; rowIdx < pattern.NumRows(); rowIdx++ {
-			row, err := pattern.GetRow(rowIdx)
+		// Export all patterns
+		patterns := make([]PatternExport, 0)
+		for patNum := 0; patNum < pt.NumPatterns(); patNum++ {
+			pattern, err := pt.GetPattern(int8(patNum))
 			if err != nil {
+				slog.Warn("Failed to get pattern", "pattern", patNum, "error", err)
 				continue
 			}
 
-			notes := row.Notes()
-			channels := make([]PatternExportNote, pattern.NumChannels())
-			for chanIdx := 0; chanIdx < pattern.NumChannels(); chanIdx++ {
-				note := notes[chanIdx]
-				noteStr := "---"
-				if note.Period() > 0 {
-					if str, err := note.ToString(); err == nil {
-						noteStr = str
+			patternExport := PatternExport{
+				PatternNumber: patNum,
+				NumChannels:   pattern.NumChannels(),
+				NumRows:       pattern.NumRows(),
+				Rows:          make([]PatternExportRow, 0),
+			}
+
+			for rowIdx := 0; rowIdx < pattern.NumRows(); rowIdx++ {
+				row, err := pattern.GetRow(rowIdx)
+				if err != nil {
+					continue
+				}
+
+				notes := row.Notes()
+				channels := make([]PatternExportNote, pattern.NumChannels())
+				for chanIdx := 0; chanIdx < pattern.NumChannels(); chanIdx++ {
+					note := notes[chanIdx]
+					noteStr := "---"
+					if note.Period() > 0 {
+						if str, err := note.ToString(); err == nil {
+							noteStr = str
+						}
+					}
+
+					channels[chanIdx] = PatternExportNote{
+						Note:       noteStr,
+						Period:     note.Period(),
+						Instrument: note.Instrument(),
+						Effect:     note.Effect(),
+						Parameter:  note.Parameter(),
 					}
 				}
 
-				channels[chanIdx] = PatternExportNote{
-					Note:       noteStr,
-					Period:     note.Period(),
-					Instrument: note.Instrument(),
-					Effect:     note.Effect(),
-					Parameter:  note.Parameter(),
-				}
+				patternExport.Rows = append(patternExport.Rows, PatternExportRow{
+					RowNumber: rowIdx,
+					Channels:  channels,
+				})
 			}
 
-			patternExport.Rows = append(patternExport.Rows, PatternExportRow{
-				RowNumber: rowIdx,
-				Channels:  channels,
-			})
+			patterns = append(patterns, patternExport)
 		}
 
-		patterns = append(patterns, patternExport)
-	}
+		export = ModulePatternExport{
+			Format:          "protracker",
+			Title:           pt.Title(),
+			SongLength:      int(pt.SongLength()),
+			RestartPosition: pt.RestartPos(),
+			NumChannels:     pt.NumChannels(),
+			PatternOrder:    patternOrder,
+			Samples:         samples,
+			Patterns:        patterns,
+		}
 
-	export := ModulePatternExport{
-		Title:           pt.Title(),
-		SongLength:      int(pt.SongLength()),
-		RestartPosition: pt.RestartPos(),
-		NumChannels:     pt.NumChannels(),
-		PatternOrder:    patternOrder,
-		Samples:         samples,
-		Patterns:        patterns,
+	case module.FASTTRACKER:
+		ft := m.(*module.FastTracker)
+
+		// Build pattern order from order table
+		patternOrder := make([]int, int(ft.PatternSize()))
+		for i := 0; i < int(ft.PatternSize()); i++ {
+			patternOrder[i] = int(ft.OrderTable()[i])
+		}
+
+		// Export samples (flattened for backward compatibility)
+		samples := make([]SampleExport, 0)
+		for _, sample := range ft.Samples() {
+			ftSample := sample.(module.FTSample)
+			// Convert XM sample to MOD-style sample for compatibility
+			sampleExport := SampleExport{
+				Number:       len(samples) + 1,
+				Name:         ftSample.Name(),
+				Length:       int(ftSample.Length()),
+				Finetune:     int(ftSample.Finetune()),
+				Volume:       int(ftSample.Volume()),
+				RepeatOffset: int(ftSample.LoopStart() / 2), // Convert bytes to words
+				RepeatLength: int((ftSample.LoopEnd() - ftSample.LoopStart()) / 2),
+				Data:         base64.StdEncoding.EncodeToString(ftSample.Data()),
+			}
+			samples = append(samples, sampleExport)
+		}
+
+		// Export instruments (XM hierarchical structure)
+		instruments := make([]InstrumentExport, 0)
+		for idx, inst := range ft.FTInstruments() {
+			instSamples := make([]XMSampleExport, 0)
+			for sIdx, sample := range inst.Samples() {
+				xmSample := XMSampleExport{
+					Number:       sIdx + 1,
+					Name:         sample.Name(),
+					Length:       sample.Length(),
+					LoopStart:    sample.LoopStart(),
+					LoopEnd:      sample.LoopEnd(),
+					Volume:       sample.Volume(),
+					Finetune:     sample.Finetune(),
+					SampleType:   sample.SampleType(),
+					Panning:      sample.Panning(),
+					RelativeNote: sample.RelativeNote(),
+					DataType:     sample.DataType(),
+					Data:         base64.StdEncoding.EncodeToString(sample.Data()),
+				}
+				instSamples = append(instSamples, xmSample)
+			}
+
+			instExport := InstrumentExport{
+				Number:  idx + 1,
+				Name:    inst.Name(),
+				Samples: instSamples,
+			}
+			instruments = append(instruments, instExport)
+		}
+
+		// Note: XM patterns aren't currently parsed, so patterns will be empty
+		patterns := make([]PatternExport, 0)
+
+		export = ModulePatternExport{
+			Format:          "fasttracker",
+			Title:           ft.Title(),
+			SongLength:      int(ft.PatternSize()),
+			RestartPosition: int(ft.RestartPosition()),
+			NumChannels:     0, // TODO: Parse from XM header
+			PatternOrder:    patternOrder,
+			Samples:         samples,
+			Patterns:        patterns,
+			Author:          ft.Author(),
+			Version:         ft.Version(),
+			Flags:           ft.Flags(),
+			Tempo:           ft.Tempo(),
+			BPM:             ft.BPM(),
+			Instruments:     instruments,
+		}
+
+	default:
+		return fmt.Errorf("unsupported module format: %v", m.Type())
 	}
 
 	// Marshal to JSON

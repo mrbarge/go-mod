@@ -185,3 +185,39 @@ func (m *FastTracker) NumPatterns() int {
 	return len(m.patterns)
 }
 
+func (m *FastTracker) Author() string {
+	return m.author
+}
+
+func (m *FastTracker) Version() uint16 {
+	return m.version
+}
+
+func (m *FastTracker) PatternSize() uint16 {
+	return m.patternSize
+}
+
+func (m *FastTracker) RestartPosition() uint16 {
+	return m.restartPos
+}
+
+func (m *FastTracker) Flags() uint16 {
+	return m.flags
+}
+
+func (m *FastTracker) Tempo() uint16 {
+	return m.tempo
+}
+
+func (m *FastTracker) BPM() uint16 {
+	return m.bpm
+}
+
+func (m *FastTracker) OrderTable() []byte {
+	return m.orderTable
+}
+
+func (m *FastTracker) FTInstruments() []FTInstrument {
+	return m.instruments
+}
+

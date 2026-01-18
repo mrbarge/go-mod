@@ -25,3 +25,39 @@ func (i FTSample) Filename() string {
 func (i FTSample) Data() []byte {
 	return i.data
 }
+
+func (i FTSample) LoopStart() uint32 {
+	return i.loopStart
+}
+
+func (i FTSample) LoopEnd() uint32 {
+	return i.loopEnd
+}
+
+func (i FTSample) Length() uint32 {
+	return i.length
+}
+
+func (i FTSample) Volume() uint8 {
+	return i.volume
+}
+
+func (i FTSample) Finetune() uint8 {
+	return i.finetune
+}
+
+func (i FTSample) SampleType() uint8 {
+	return i.sampleType
+}
+
+func (i FTSample) Panning() uint8 {
+	return i.panning
+}
+
+func (i FTSample) RelativeNote() uint8 {
+	return i.relativeNote
+}
+
+func (i FTSample) DataType() uint8 {
+	return i.dataType
+}

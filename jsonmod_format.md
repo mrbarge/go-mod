@@ -1,18 +1,26 @@
-# ProTracker MOD JSON Format Specification
+# Module JSON Format Specification
 
-This document describes the JSON format used for importing and exporting ProTracker MOD files. This format provides a human-readable and programmatically accessible representation of MOD file data.
+This document describes the JSON format used for importing and exporting tracker module files. This format provides a human-readable and programmatically accessible representation of module data.
+
+Supported formats:
+- **ProTracker MOD** - Classic 4-channel Amiga tracker format
+- **FastTracker XM** - Extended multi-channel format with advanced features
 
 ## Overview
 
-The JSON format represents a complete ProTracker module including:
-- Module metadata (title, song structure)
-- Sample data (instruments with audio data)
+The JSON format represents a complete tracker module including:
+- Module metadata (title, song structure, format-specific properties)
+- Sample/Instrument data (audio data and playback parameters)
 - Pattern data (musical notation and effects)
+
+The format uses optional fields to support both ProTracker MOD and FastTracker XM while maintaining backward compatibility.
 
 ## Root Structure
 
+### ProTracker MOD Format
 ```json
 {
+  "format": "protracker",
   "title": "string",
   "song_length": number,
   "restart_position": number,
@@ -23,17 +31,53 @@ The JSON format represents a complete ProTracker module including:
 }
 ```
 
+### FastTracker XM Format
+```json
+{
+  "format": "fasttracker",
+  "title": "string",
+  "song_length": number,
+  "restart_position": number,
+  "num_channels": number,
+  "pattern_order": [array of numbers],
+  "samples": [array of SampleExport objects],
+  "patterns": [array of PatternExport objects],
+  "author": "string",
+  "version": number,
+  "flags": number,
+  "tempo": number,
+  "bpm": number,
+  "instruments": [array of InstrumentExport objects]
+}
+```
+
 ### Root Fields
+
+#### Common Fields (Both Formats)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `title` | string | Module title (max 20 characters, will be truncated/padded) |
-| `song_length` | number | Number of positions in the pattern order table (1-128) |
-| `restart_position` | number | Position to restart playback (legacy field, typically 0) |
-| `num_channels` | number | Number of channels (typically 4 for standard ProTracker) |
-| `pattern_order` | number[] | Array of pattern indices defining song structure (max 128 entries) |
-| `samples` | SampleExport[] | Array of sample/instrument definitions (max 31) |
+| `format` | string | Module format: "protracker" or "fasttracker" |
+| `title` | string | Module title (max 20 characters for MOD, 20 for XM) |
+| `song_length` | number | Number of positions in the pattern order table (1-128 for MOD, 1-256 for XM) |
+| `restart_position` | number | Position to restart playback |
+| `num_channels` | number | Number of channels (4 for standard MOD, 1-32 for XM) |
+| `pattern_order` | number[] | Array of pattern indices defining song structure |
+| `samples` | SampleExport[] | Array of sample definitions (max 31 for MOD, flattened from instruments for XM) |
 | `patterns` | PatternExport[] | Array of pattern definitions |
+
+#### XM-Specific Fields (Optional)
+
+These fields only appear when `format` is "fasttracker":
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `author` | string | Module author name (max 20 characters) |
+| `version` | number | XM format version number (e.g., 0x0104 for v1.04) |
+| `flags` | number | Module flags (bit 0: Amiga frequency table) |
+| `tempo` | number | Default tempo (ticks per row, typically 6) |
+| `bpm` | number | Default BPM (beats per minute, typically 125) |
+| `instruments` | InstrumentExport[] | Hierarchical instrument structures (XM-specific) |
 
 ## Sample Structure
 
@@ -67,15 +111,82 @@ Each sample represents an instrument with its audio data and playback parameters
 
 ### Sample Notes
 
-- Sample data should be 8-bit signed mono PCM audio
-- Sample lengths are always even (stored in 2-byte words)
-- If `repeat_length` is 1, the sample doesn't loop
-- If `repeat_length` > 1, the sample loops from `repeat_offset` for `repeat_length` words
+- **ProTracker MOD**: Sample data should be 8-bit signed mono PCM audio
+- **ProTracker MOD**: Sample lengths are always even (stored in 2-byte words)
+- **ProTracker MOD**: If `repeat_length` is 1, the sample doesn't loop
+- **ProTracker MOD**: If `repeat_length` > 1, the sample loops from `repeat_offset` for `repeat_length` words
+- **FastTracker XM**: Samples are exported in a flattened format for backward compatibility
 - When importing, the actual decoded base64 data length is used, not the `length` field
+
+## XM Instrument Structure
+
+For FastTracker XM files, the `instruments` array contains hierarchical instrument data. Each instrument can contain multiple samples with extended parameters.
+
+```json
+{
+  "number": number,
+  "name": "string",
+  "samples": [array of XMSampleExport objects]
+}
+```
+
+### Instrument Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `number` | number | Instrument number (1-based index, max 128) |
+| `name` | string | Instrument name (max 22 characters) |
+| `samples` | XMSampleExport[] | Array of samples within this instrument |
+
+## XM Sample Structure
+
+XM samples have extended properties compared to MOD samples.
+
+```json
+{
+  "number": number,
+  "name": "string",
+  "length": number,
+  "loop_start": number,
+  "loop_end": number,
+  "volume": number,
+  "finetune": number,
+  "sample_type": number,
+  "panning": number,
+  "relative_note": number,
+  "data_type": number,
+  "data": "base64-encoded-string"
+}
+```
+
+### XM Sample Fields
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `number` | number | 1-16 | Sample number within instrument (1-based) |
+| `name` | string | max 22 chars | Sample name |
+| `length` | number | 0-4GB | Sample length in bytes |
+| `loop_start` | number | 0-length | Loop start position in bytes |
+| `loop_end` | number | 0-length | Loop end position in bytes |
+| `volume` | number | 0-64 | Default playback volume |
+| `finetune` | number | -128 to 127 | Fine-tuning value (signed byte) |
+| `sample_type` | number | 0-3 | Bit 0: loop on/off, Bit 1: ping-pong loop |
+| `panning` | number | 0-255 | Default panning (0=left, 128=center, 255=right) |
+| `relative_note` | number | -96 to 95 | Relative note (transpose, signed) |
+| `data_type` | number | 0-1 | 0=8-bit, 1=16-bit sample data |
+| `data` | string | base64 | Sample audio data encoded as base64 |
+
+### XM Sample Notes
+
+- XM samples can be 8-bit or 16-bit (check `data_type`)
+- Loop positions are in bytes, not words like MOD
+- `sample_type` bit flags: `0x01` = forward loop, `0x02` = ping-pong loop
+- XM samples are stored as delta values in the file but are decoded to absolute values in the JSON
+- Samples support advanced features like ping-pong loops and per-sample panning
 
 ## Pattern Structure
 
-Each pattern represents 64 rows of musical data across all channels.
+Each pattern represents musical data across all channels. ProTracker MOD patterns always have 64 rows, while FastTracker XM patterns can have 1-256 rows.
 
 ```json
 {
@@ -97,7 +208,9 @@ Each pattern represents 64 rows of musical data across all channels.
 
 ### Pattern Notes
 
-- ProTracker patterns MUST have exactly 64 rows
+- **ProTracker MOD**: Patterns MUST have exactly 64 rows
+- **FastTracker XM**: Patterns can have 1-256 rows (variable per pattern)
+- **Note**: XM pattern parsing is not yet fully implemented in the current version
 - When importing, missing rows are automatically filled with empty notes
 - Rows can be sparse in the JSON (only non-empty rows need to be specified)
 
@@ -251,27 +364,52 @@ Common note periods for standard ProTracker tuning (finetune = 0):
 
 ## Import/Export Commands
 
-### Export MOD to JSON
+### Export to JSON
 ```bash
+# Export ProTracker MOD to JSON
 ./go-mod dump-patterns input.mod -o output.json
+
+# Export FastTracker XM to JSON
+./go-mod dump-patterns input.xm -o output.json
 ```
 
-### Import JSON to MOD
+### Import from JSON
 ```bash
+# Import JSON to ProTracker MOD
 ./go-mod import-patterns input.json output.mod
+
+# Import JSON to FastTracker XM (not yet implemented)
+# ./go-mod import-patterns input.json output.xm
 ```
+
+**Note**: XM import functionality is not yet implemented in the current version.
 
 ## Technical Notes
 
 ### Binary Encoding
-- ProTracker MOD files use big-endian byte order
+
+#### ProTracker MOD
+- Uses big-endian byte order
 - Sample lengths and repeat values are stored in words (2-byte units)
 - Note data is packed into 4 bytes per note
 
+#### FastTracker XM
+- Uses little-endian byte order
+- Sample data stored as delta-encoded values (decoded during load)
+- Note data is 5 bytes per note with pattern packing
+- Supports 8-bit and 16-bit sample data
+
 ### Round-Trip Compatibility
-- Export and import operations are designed to be lossless
+
+#### ProTracker MOD
+- Export and import operations are fully lossless
 - Round-trip conversion (MOD → JSON → MOD) produces byte-identical files
 - Sample data with odd byte lengths will be truncated to even lengths during import
+
+#### FastTracker XM
+- Export is functional but patterns are not yet parsed
+- Import functionality not yet implemented
+- XM samples are decoded from delta format to absolute values in JSON
 
 ### Sparse Row Data
 When exporting, all 64 rows are included. When importing:
@@ -288,10 +426,30 @@ When exporting, all 64 rows are included. When importing:
 ## Version Information
 
 This format is compatible with:
-- ProTracker 2.3 MOD files (4-channel)
-- ProTracker M.K. format
-- Extended formats (6CHN, 8CHN, FLT4, FLT8)
+- **ProTracker MOD**:
+  - ProTracker 2.3 MOD files (4-channel)
+  - ProTracker M.K. format
+  - Extended formats (6CHN, 8CHN, FLT4, FLT8)
+- **FastTracker XM**:
+  - FastTracker II XM files (v1.04)
+  - Multi-channel modules (1-32 channels)
+  - Variable pattern lengths (1-256 rows)
 
 Generated by: go-mod tool
-Format Version: 1.0
+Format Version: 1.1 (added XM support)
 Last Updated: 2026-01-18
+
+## Implementation Status
+
+### Completed
+- ✅ ProTracker MOD export to JSON (fully functional)
+- ✅ ProTracker MOD import from JSON (fully functional)
+- ✅ FastTracker XM metadata export (title, author, version, tempo, BPM)
+- ✅ FastTracker XM instrument/sample export (hierarchical and flattened)
+- ✅ Backward compatibility (MOD files unchanged by XM additions)
+
+### In Progress / TODO
+- ⏳ FastTracker XM pattern parsing (currently patterns export as empty array)
+- ⏳ FastTracker XM import from JSON
+- ⏳ XM envelope data export/import
+- ⏳ XM note encoding/decoding (5-byte compressed format)
